@@ -1,0 +1,28 @@
+# 빌드 파일 무시
+/build/
+*.o
+*.out
+*.cyclo
+*.d
+*.su
+*.bin
+*.hex
+*.map
+*.elf
+*.mk
+
+# 사용자 설정 파일 무시
+*.log
+*.env
+*.tmp
+
+# 운영체제 생성 파일 무시
+.DS_Store
+Thumbs.db
+
+# IDE 설정 파일 무시
+.vscode/
+.idea/
+*.iml
+./W6300_V2_serial_Test_20240911_irina/Debug/*
+

@@ -282,7 +282,7 @@ typedef   int16_t   datasize_t;     ///< sent or received data size
 #define QSPI_MODE_SINGLE 	0x00
 #define QSPI_MODE_DUAL		0x01
 #define QSPI_MODE_QUAD 		0x02
-#define QSPI_MODE  QSPI_MODE_SINGLE
+#define QSPI_MODE  QSPI_MODE_QUAD
 
 #endif 
 

@@ -99,7 +99,7 @@ void W6300Initialze(void)
 	uint8_t temp;
 //	unsigned char W6300_AdrSet[2][8] = {{2, 2, 2, 2, 2, 2, 2, 2}, {2, 2, 2, 2, 2, 2, 2, 2}};
 //	unsigned char W6300_AdrSet[2][8] = {{4, 4, 4, 4, 4, 4, 4, 4}, {4, 4, 4, 4, 4, 4, 4, 4}};
-	unsigned char W6300_AdrSet[2][8] = {{32, 0, 0, 0, 0, 0, 0, 0}, {32, 0, 0, 0, 0, 0, 0, 0}};
+	unsigned char W6300_AdrSet[2][8] = {{16,16, 0, 0, 0, 0, 0, 0}, {16, 16, 0, 0, 0, 0, 0, 0}};
 	// unsigned char W6300_AdrSet[2][8] = {{2, 0, 0, 0, 0, 0, 0, 0}, {2, 0, 0, 0, 0, 0, 0, 0}};
 	printf("PHY OK......\r\n");
 

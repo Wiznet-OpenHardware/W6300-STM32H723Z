@@ -35,6 +35,7 @@ RM := rm -rf
 -include Drivers/STM32H7xx_HAL_Driver/Src/subdir.mk
 -include Core/Startup/subdir.mk
 -include Core/Src/subdir.mk
+-include Core/Inc/iperf/subdir.mk
 -include objects.mk
 
 ifneq ($(MAKECMDGOALS),clean)
@@ -90,7 +91,7 @@ main-build: W6300_QSPI_TEST.elf secondary-outputs
 
 # Tool invocations
 W6300_QSPI_TEST.elf W6300_QSPI_TEST.map: $(OBJS) $(USER_OBJS) C:\projects\W6300-STM32H723Z\W6300_QSPI_Test\STM32H723ZGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "W6300_QSPI_TEST.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m7 -T"C:\projects\W6300-STM32H723Z\W6300_QSPI_Test\STM32H723ZGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="W6300_QSPI_TEST.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+	arm-none-eabi-gcc -o "W6300_QSPI_TEST.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m7 -T"C:\projects\W6300-STM32H723Z\W6300_QSPI_Test\STM32H723ZGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="W6300_QSPI_TEST.map" -Wl,--gc-sections -static -u _printf_float --specs=nano.specs -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

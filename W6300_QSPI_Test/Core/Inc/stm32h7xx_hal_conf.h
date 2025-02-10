@@ -455,6 +455,7 @@
  #include "stm32h7xx_hal_swpmi.h"
 #endif /* HAL_SWPMI_MODULE_ENABLED */
 
+#define HAL_TIM_MODULE_ENABLED
 #ifdef HAL_TIM_MODULE_ENABLED
  #include "stm32h7xx_hal_tim.h"
 #endif /* HAL_TIM_MODULE_ENABLED */

@@ -25,7 +25,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
+#define HAL_TIM_MODULE_ENABLED
 /* Includes ------------------------------------------------------------------*/
 #include "stm32h7xx_hal.h"
 

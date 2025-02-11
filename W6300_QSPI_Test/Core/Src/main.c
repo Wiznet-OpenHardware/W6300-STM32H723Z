@@ -172,9 +172,6 @@ static uint8_t g_iperf_buf[ETHERNET_BUF_MAX_SIZE * 2] = {
 
 static uint8_t cookie[COOKIE_SIZE] = {0};
 
-//uint8_t reg_WR_buf_Test(uint8_t op_code, uint16_t reg_addr, uint16_t len);
-//uint8_t reg_WR_return_data(uint8_t op_code, uint16_t reg_addr, uint16_t len, uint8_t *tx, uint8_t *rx);
-
 /* USER CODE END PFP */
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
@@ -194,7 +191,6 @@ void exchange_results(uint8_t socket_ctrl, Stats *stats);
 int main(void)
 {
  W6300_mode = QSPI_MODE;//0; //W6100 >> 0xFF
-  /* USER CODE BEGIN 1 */
   int i = 0;
   int ret;
   uint8_t syslock = SYS_NET_LOCK;
@@ -208,21 +204,15 @@ int main(void)
 
   int retval = 0;
 
-  /* USER CODE END 1 */
   /* MCU Configuration--------------------------------------------------------*/
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
   MX_TIM2_Init(); 
-  /* USER CODE BEGIN Init */
-  /* USER CODE END Init */
   /* Configure the system clock */
   SystemClock_Config();
 
-/* Configure the peripherals common clocks */
+  /* Configure the peripherals common clocks */
   PeriphCommonClock_Config();
-
-  /* USER CODE BEGIN SysInit */
-  /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
@@ -233,11 +223,6 @@ int main(void)
   MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
   
-  // FMC ?��?�� 계산
-  //uint32_t fmc_clock = Get_FMC_Clock();
-  // FMC ?��?�� 출력
-  //printf("FMC Clock Frequency: %lu Hz\n", fmc_clock);
-
   printf("W6300 test Program V%04d \r\n", RTLVERSiON);
   printf("Compile %s - %s \r\n", __DATE__, __TIME__);
   HAL_UART_Receive_IT(&huart2, &rxData, 1);
@@ -278,8 +263,6 @@ int main(void)
   printf("W6300Initialze_ok \r\n"); 
   ctlnetwork(CN_SET_NETINFO, &gWIZNETINFO);
 
-  //printf("VERSION(%04x) = %04x \r\n", _VER_, getVER());
-  //SET_W6300_IF_MODE
   printf("CHIP ID(%04x) = 0x%04x \r\n", _CIDR_, getCIDR());
   printf("VERSION(%04x) = 0x%04x \r\n", _VER_, getVER());
   for (i = 0; i < 8; i++)
@@ -292,11 +275,6 @@ int main(void)
   printf("RTL : %x\r\n",WIZCHIP_READ((_W6300_IO_BASE_ + (0x0004 << 8) + WIZCHIP_CREG_BLOCK)));
   printf("\r\n>");
   fflush(stdout);
-
-  /* USER CODE END 2 */
-
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
 
   //TEST code - Set up clk _by_lihan
   HAL_RCCEx_GetPLL2ClockFreq(&temp_PLL2_Clk_data);
@@ -324,14 +302,6 @@ int main(void)
 
   SystemCoreClockUpdate();
   printf("System Clock: %lu Hz\n", SystemCoreClock /2 );
-  // while (1){
-  //   wiz_delay(100);
-  //   uint32_t ms100 =  get_time_us() / 1000 / 100 ;
-  //   printf("time = %lu . %lu sec \r\n ",ms100 /10, ms100 % 10); ;
-      
-  // }
-
-
 
   socket(SOCKET_CTRL, Sn_MR_TCP, PORT_IPERF, SOCKET_NO_DELAY_ACK);
   listen(SOCKET_CTRL);
@@ -340,7 +310,6 @@ int main(void)
   {
     stats_init(&stats, 1000);
     socket_status = getSn_SR(SOCKET_CTRL);
-    // printf("socket_status = %d \r\n", socket_status);
     if (socket_status == SOCK_ESTABLISHED) {
 
       handle_param_exchange(SOCKET_CTRL, &reverse, &udp);
@@ -360,8 +329,6 @@ int main(void)
     }
   }
 }
-
-  /* USER CODE END 3 */
 
 // week_Function Redefined
 int _write(int fd, char *str, int len) 
@@ -925,7 +892,6 @@ char SPI_CLK_SET(uint16_t set_clk_data)
     {
       Error_Handler();
     }
-
     /* Peripheral clock enable */
     //__HAL_RCC_OCTOSPIM_CLK_ENABLE();
     //__HAL_RCC_OSPI1_CLK_ENABLE();
@@ -1071,17 +1037,13 @@ void start_iperf_test(uint8_t socket_ctrl, uint8_t socket_data, Stats *stats, bo
                 break;
             }
         }
-
         if (reverse) {
-            // memset(g_iperf_buf, 0xAA, ETHERNET_BUF_MAX_SIZE /2  ); // 
             uint16_t sent_sizse =  send(socket_data, g_iperf_buf, ETHERNET_BUF_MAX_SIZE / 4);
             stats_add_bytes(stats,sent_sizse );
         } else {
-            // getsockopt(socket_data, SO_RECVBUF, &pack_len);
             getsockopt(socket_data, SO_RECVBUF, &pack_len);
             if (pack_len > 0)
             {
-                //uint16_t recvSize  =  recv(socket_data, (uint8_t *)g_iperf_buf, ETHERNET_BUF_MAX_SIZE / 2 ); 
                 uint16_t recvSize  =  recv(socket_data, (uint8_t *)g_iperf_buf, ETHERNET_BUF_MAX_SIZE - 1  ); // more fast
                 stats_add_bytes(stats, recvSize);
             }

@@ -187,39 +187,7 @@ void wiz_send_data(uint8_t sn, uint8_t *wizdata, uint16_t len)
    setSn_TX_WR(sn,ptr);
 }
 
-#if 0
-#define ETHERNET_BUF_MAX_SIZE_TEMP (1024 * 32 )
-void wiz_recv_data(uint8_t sn, uint8_t *wizdata, uint16_t len)
-{
-   uint16_t ptr = 0;
-   uint32_t addrsel = 0;
-   if(len == 0) return;
-   ptr = getSn_RX_RD(sn);
-   
-   if (ptr + len > 0xFFFF)
-   {
-      addrsel = ((uint32_t)ptr << 8) + WIZCHIP_RXBUF_BLOCK(sn);
-      uint16_t size = 0xFFFF - ptr;
-      WIZCHIP_READ_BUF(addrsel, wizdata, size);
-      wizdata += size;
-      size = len - size;
-      addrsel = WIZCHIP_RXBUF_BLOCK(sn);
-      WIZCHIP_READ_BUF(addrsel, wizdata, size);
-   }
-   else
-   {
-      addrsel = ((uint32_t)ptr << 8) + WIZCHIP_RXBUF_BLOCK(sn);
-      WIZCHIP_READ_BUF(addrsel, wizdata, len);
-   }
 
-   ptr += len;
-   ptr %= 0xFFFF ; 
-   
-   setSn_RX_RD(sn,ptr);
-}
-
-
-#else
 void wiz_recv_data(uint8_t sn, uint8_t *wizdata, uint16_t len)
 {
    uint16_t ptr = 0;
@@ -231,7 +199,6 @@ void wiz_recv_data(uint8_t sn, uint8_t *wizdata, uint16_t len)
    ptr += len;
    setSn_RX_RD(sn,ptr);
 }
-#endif 
 void wiz_recv_ignore(uint8_t sn, uint16_t len)
 {
    setSn_RX_RD(sn,getSn_RX_RD(sn)+len);

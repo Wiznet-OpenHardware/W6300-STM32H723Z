@@ -174,7 +174,6 @@ int main(void)
 {
 
   W6300_mode = QSPI_MODE;//0; //W6100 >> 0xFF
-  /* USER CODE BEGIN 1 */
   int i = 0;
   int ret;
   uint8_t syslock = SYS_NET_LOCK;
@@ -188,20 +187,15 @@ int main(void)
 
   int retval = 0;
 
-  /* USER CODE END 1 */
   /* MCU Configuration--------------------------------------------------------*/
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
-  /* USER CODE BEGIN Init */
-  /* USER CODE END Init */
+
   /* Configure the system clock */
   SystemClock_Config();
 
-/* Configure the peripherals common clocks */
+  /* Configure the peripherals common clocks */
   PeriphCommonClock_Config();
-
-  /* USER CODE BEGIN SysInit */
-  /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
@@ -210,12 +204,6 @@ int main(void)
   //MX_FMC_Init();
   MX_USART2_UART_Init();
   MX_SPI2_Init();
-  /* USER CODE BEGIN 2 */
-  
-  // FMC ?��?�� 계산
-  //uint32_t fmc_clock = Get_FMC_Clock();
-  // FMC ?��?�� 출력
-  //printf("FMC Clock Frequency: %lu Hz\n", fmc_clock);
 
   printf("W6300 test Program V%04d \r\n", RTLVERSiON);
   printf("Compile %s - %s \r\n", __DATE__, __TIME__);
@@ -263,13 +251,7 @@ int main(void)
   printf("\r\n>");
   fflush(stdout);
 
-  /* USER CODE END 2 */
-
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
-
-  //TEST code - Set up clk _by_lihan
-#if 0 
+#if 1
   HAL_RCCEx_GetPLL2ClockFreq(&temp_PLL2_Clk_data);
   printf("QSPI CLK %dMhz \r\n", temp_PLL2_Clk_data.PLL2_R_Frequency / 2 / 1000000);
   SPI_CLK_SET(45);
@@ -295,9 +277,6 @@ int main(void)
 
   while (1)
   {
-    // printf("VERSION = 0x%02x \r\n", ((uint16_t)WIZCHIP_READ(_VER_)));
-    /* USER CODE END WHILE */
-    /* USER CODE BEGIN 3 */
 
 #if _TESTMODE_ == _LOOPBACK_MODE_
    
@@ -321,7 +300,6 @@ int main(void)
                 getsockopt(SOCKET, SO_RECVBUF, &pack_len);
                 if (pack_len > 0)
                 {
-                  //  recv(SOCKET, (uint8_t *)g_iperf_buf, ETHERNET_BUF_MAX_SIZE -1 );
                     recv(SOCKET, (uint8_t *)g_iperf_buf,  ETHERNET_BUF_MAX_SIZE  - 1  );
                 }
             }
@@ -333,7 +311,7 @@ int main(void)
             listen(SOCKET);
             break;
         case SOCK_CLOSED:
-            socket(SOCKET, Sn_MR_TCP, PORT_IPERF, 0x20);
+            socket(SOCKET, Sn_MR_TCP, PORT_IPERF, 0x20); // 0x20 = no delay ack
             break;
         default:
             break;
@@ -345,8 +323,6 @@ int main(void)
    
 #endif 
   }
-
-  /* USER CODE END 3 */
 }
 
 // week_Function Redefined

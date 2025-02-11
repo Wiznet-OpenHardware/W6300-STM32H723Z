@@ -451,7 +451,7 @@ int8_t disconnect(uint8_t sn)
 }
 
 
-#if 0
+#if 1
 int32_t send(uint8_t sn, uint8_t * buf, uint16_t len)
 {
    uint8_t tmp=0;

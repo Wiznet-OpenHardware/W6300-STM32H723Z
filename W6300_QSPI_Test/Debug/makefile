@@ -31,6 +31,7 @@ RM := rm -rf
 -include io6Library/Ethernet/subdir.mk
 -include io6Library/Application/multicast/subdir.mk
 -include io6Library/Application/loopback/subdir.mk
+-include TestProgram/ES_TEST/subdir.mk
 -include TestProgram/subdir.mk
 -include Drivers/STM32H7xx_HAL_Driver/Src/subdir.mk
 -include Core/Startup/subdir.mk

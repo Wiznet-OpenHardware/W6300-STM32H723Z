@@ -215,10 +215,21 @@ extern "C" {
 
 //----------------------------- W6300 Common Registers IOMAP -----------------------------
 
-/**
+/**s
+
+
+
  * @addtogroup Common_register_group_W6300
  * @{
  */
+
+
+/**
+ * @brief Chip Identification Register address [RO] [0x11]
+ * @sa getRTL()
+ */
+#define _RTL_                 (_W6300_IO_BASE_ + (0x0004 << 8) + WIZCHIP_CREG_BLOCK)
+
 
 /**
  * @brief Chip Identification Register address [RO] [0x6100]
@@ -3424,8 +3435,12 @@ void WIZCHIP_WRITE_BUF(uint32_t AddrSel, uint8_t* pBuf, datasize_t len);
  * @addtogroup Common_register_access_function_W6300
  * @{
  */
+
+#define getRTL() \
+        WIZCHIP_READ(_RTL_)
+
 #define getCIDR() \
-        ((((uint16_t)WIZCHIP_READ(_CIDR_)) << 8) + WIZCHIP_READ(WIZCHIP_OFFSET_INC(_CIDR_,1)))
+        ((((uint16_t)WIZCHIP_READ(_CIDR_)| (((WIZCHIP_READ(_RTL_))&0x0F) << 1)) << 8) + WIZCHIP_READ(WIZCHIP_OFFSET_INC(_CIDR_,1)))
 
 #define getVER() \
         ((((uint16_t)WIZCHIP_READ(_VER_)) << 8) + WIZCHIP_READ(WIZCHIP_OFFSET_INC(_VER_,1)))

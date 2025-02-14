@@ -26,3 +26,5 @@ Thumbs.db
 *.iml
 ./W6300_V2_serial_Test_20240911_irina/Debug/*
 
+W6300_QSPI_Test/Debug/\[0_44\]W6300_Socket_board_TEST_SPI(250214).zip
+W6300_QSPI_Test/Debug/W6300_Socket_board_TEST_QSPI(250214).zip

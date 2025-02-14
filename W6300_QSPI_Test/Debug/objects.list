@@ -32,6 +32,7 @@
 "./Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_uart.o"
 "./Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_uart_ex.o"
 "./Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_ll_fmc.o"
+"./TestProgram/ES_TEST/chip_init_TEST.o"
 "./TestProgram/PHY_IP101G.o"
 "./TestProgram/Test_td.o"
 "./TestProgram/W6300_TestProcess.o"

@@ -29,12 +29,13 @@
 #include "socket.h"
 #include "wizchip_init.h"
 #include "loopback.h"
+#include "../TestProgram/ES_TEST/Chip_init_TEST.h"
 
 #define _LOOPBACK_MODE_  0 
 #define _IPERF_SEND_MODE_  1
 #define _IPERF_RECV_MODE_  2 
 
-#define _TESTMODE_ _IPERF_RECV_MODE_ 
+#define _TESTMODE_ _LOOPBACK_MODE_ 
 
 #define TCPS_EN    1
 #define NDA        1
@@ -84,9 +85,9 @@ NOR_HandleTypeDef hnor1;
 /* USER CODE BEGIN PV */
 //uint8_t W6300_mode = QSPI_MODE;//0; //W6100 >> 0xFF
 wiz_NetInfo gWIZNETINFO = {.mac = {0x00, 0x08, 0xdc, 0xa3, 0xb4, 0xc5},
-                           .ip = {192, 168, 11, 44},
+                           .ip = {192, 168, 0, 44},
                            .sn = {255, 255, 255, 0},
-                           .gw = {192, 168, 11, 1},
+                           .gw = {192, 168, 0, 1},
                            .dns = {8, 8, 8, 8},
                            .lla = {0xfe, 0x80, 0x00, 0x00,
                                    0x00, 0x00, 0x00, 0x00,
@@ -232,6 +233,103 @@ int main(void)
 #endif
 
   W6300Initialze();
+
+printf("===================================\r\n");
+printf("==========ES_TEST_start============\r\n");
+
+
+ES_SW_Reset();
+ES_HW_Reset();
+ES_Set_Clk_25Mhz();
+ES_Set_Clk_100Mhz();
+
+  W6300Initialze();
+
+
+printf("===================================\r\n");
+printf("=======Common Reg Check start======\r\n");
+
+ES_common_register_0x0000_read();
+ES_common_register_0x0002_read();
+ES_common_register_0x2000_read(); //0x01이 반환되는게 맞나???
+
+
+printf("===================================\r\n");
+printf("==========buffer TEST start========\r\n");
+
+uint16_t len_max = 16;
+uint8_t buffer[len_max];
+/* TX TEST */
+for(int i = 0; i < 8; i++)
+{
+  for(int len =1; len <= len_max; len=len*2)
+  {
+    if (len > 1024)
+    {
+      printf("====TX_SOCKET[%d]- %d KByte Read/Write====\r\n", i , len /1024);
+    }
+    else
+    {
+      printf("====TX_SOCKET[%d]- %d Byte  Read/Write====\r\n", i , len );
+    }
+    memset(buffer, (len >> 8) + (len & 0xff) , len);
+    ES_SOCKET_buffer_write_read( WIZCHIP_TXBUF_BLOCK(i), buffer, len);
+  }
+}
+
+/* RX TEST */
+for(int i = 0; i < 8; i++)
+{
+  for(int len =1; len <= len_max; len=len*2)
+  {
+    if (len > 1024)
+    {
+      printf("====RX_SOCKET[%d]- %d KByte Read/Write====\r\n", i , len /1024);
+    }
+    else
+    {
+      printf("====RX_SOCKET[%d]- %d Byte  Read/Write====\r\n", i , len );
+    }
+    memset(buffer, (len >> 8) + (len & 0xff) , len);
+    ES_SOCKET_buffer_write_read( WIZCHIP_RXBUF_BLOCK(i), buffer, len);
+  }
+}
+
+
+
+
+printf("===================================\r\n");
+printf("========= Phy Reg Check start======\r\n");
+
+/* power down Mode and Reset TEST*/
+ES_LINK_STATUS();
+ES_GET_PHY_MODE(); 
+ES_GET_PHY_POWER_DOWN(); 
+
+ES_SET_PHY_POWER_DOWN(PHY_POWER_DOWN);
+ES_SET_PHY_MODE(PHYMODE_10_FDX);
+ES_SET_PHY_MODE(PHYMODE_100_HDX);
+
+ES_GET_PHY_MODE(); 
+ES_GET_PHY_POWER_DOWN(); 
+ES_PHY_SW_RESET();
+
+ES_GET_PHY_POWER_DOWN(); 
+ES_SET_PHY_POWER_DOWN(PHY_POWER_DOWN);
+ES_GET_PHY_POWER_DOWN(); 
+
+
+ES_PHY_SW_RESET();
+
+
+printf("===================================\r\n");
+
+/* chip init start*/
+
+
+
+  chip_hw_reset();
+  W6300Initialze();
   //ctlwizchip(CW_SYS_UNLOCK, &syslock);
   printf("W6300Initialze_ok \r\n"); 
   ctlnetwork(CN_SET_NETINFO, &gWIZNETINFO);
@@ -254,7 +352,7 @@ int main(void)
 #if 1
   HAL_RCCEx_GetPLL2ClockFreq(&temp_PLL2_Clk_data);
   printf("QSPI CLK %dMhz \r\n", temp_PLL2_Clk_data.PLL2_R_Frequency / 2 / 1000000);
-  SPI_CLK_SET(45);
+  SPI_CLK_SET(30);
   HAL_RCCEx_GetPLL2ClockFreq(&temp_PLL2_Clk_data);
   printf("QSPI CLK %dMhz \r\n", temp_PLL2_Clk_data.PLL2_R_Frequency / 2 / 1000000);
 #endif 
@@ -274,6 +372,7 @@ int main(void)
   HAL_RCCEx_GetPLL2ClockFreq(&temp_PLL2_Clk_data);
   printf("QSPI CLK %dMhz \r\n", temp_PLL2_Clk_data.PLL2_R_Frequency / 2 / 1000000);
   printf("IP_mode = %d \r\n", check_loopback_mode_W6x00());
+
 
   while (1)
   {

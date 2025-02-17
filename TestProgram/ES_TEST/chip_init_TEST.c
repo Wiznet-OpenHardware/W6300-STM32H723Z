@@ -53,6 +53,17 @@ uint8_t ES_check_default(uint16_t addr ){
     }
 }
 
+void Chip_lock(void){
+    CHIPLOCK();
+}
+void Chip_unlock(void){
+    CHIPUNLOCK();
+}
+void Chip_lock_status(void){
+   getCHPLCKR();
+}
+
+
 /**
  * ----------------------------------------------------------------------------------------------------
  *  ES_CHIP INITAILIZE Functions
@@ -80,21 +91,62 @@ void ES_HW_Reset(void){    //Chip HW Reset
 
 void ES_Set_Clk_25Mhz(void){    //Clock switching
     uint8_t temp_data = 0;
-    printf("========== Set clk 25Mhz  ==========\r\n");
-    temp_data = getSYCR1();
-    setSYCR1(temp_data |  SYCR1_CLKSEL);
-    temp_data = getSYCR1();
-    printf("SYCR1 = 0x%02X\r\n", temp_data);
+    printf("========== Set W6300  Operation clk 25 Mhz  ==========\r\n");
+    temp_data = getSYCR1() | SYCR1_CLKSEL;
+
+    Chip_unlock();
     HAL_Delay(10);
+
+    setSYCR1(temp_data );
+    HAL_Delay(10);
+
+    Chip_lock();
+
+
+    if( (getSYCR1() & 0x01)  == 1 ){
+        printf_GREEN("\t\t\t\t->!!! Change W6300  Operation clk 25 Mhz Success!!!\r\n");
+    }
+    else{
+        printf_RED("\t\t\t\t->!!! Change W6300  Operation clk 25 Mhz Success fail!!!,%d\r\n");
+        printf("SYCR1 = 0x%02X\r\n", getSYCR1());
+    }
 }
 
 void ES_Set_Clk_100Mhz(void){    //Clock switching
     uint8_t temp_data = 0;
-    printf("========== Set clk 100Mhz  ==========\r\n");
-    temp_data = getSYCR1();
-    setSYCR1(temp_data & ~SYCR1_CLKSEL);
-    temp_data = getSYCR1();
-    printf("SYCR1 = 0x%02X\r\n", temp_data);
+    printf_RED("==========[!!!Need improve]Set W6300  Operation clk 100 Mhz  lock ==========\r\n");
+    
+
+    temp_data = getSYCR1() & 0xFE;
+
+
+    HAL_Delay(10);
+
+    while(getCHPLCKR()){
+        Chip_unlock();
+        printf("LOCK status  = 0x%02X\r\n", getCHPLCKR());
+        HAL_Delay(10);
+    }
+    printf("temp_data = 0x%02X\r\n", temp_data);
+    setSYCR1(temp_data);
+
+    HAL_Delay(1000);
+    printf("result = 0x%02X\r\n", getSYCR1());
+
+    Chip_lock();  
+
+
+    if( (getSYCR1() & 0x01) == 0 ){
+        printf_GREEN("\t\t\t\t->!!! Change W6300  Operation clk 100 Mhz Success!!!\r\n");
+        printf("_SYSR_ = 0x%02X\r\n", getSYCR1());
+
+    }
+    else{
+        printf_RED("\t\t\t\t ->!!! Change W6300  Operation clk 100 Mhz Success fail!!! %d \r\n");
+        printf("_SYSR_ = 0x%02X\r\n", getSYCR1());
+
+
+    }
 }   
 
 /**
@@ -328,3 +380,23 @@ void ES_SET_PHY_POWER_DOWN(uint8_t data){   //Phy Power Down
 
 
 }
+
+/**
+ * ----------------------------------------------------------------------------------------------------
+ *  ES Network TEST Functions
+ * ----------------------------------------------------------------------------------------------------
+ */
+
+
+void Ping(void){
+    uint8_t pingDestIP[4]= {192 , 168 , 11 , 2};
+    setPINGIDR(0x6300); // Ping ID
+    setPINGSEQR(getPINGSEQR() + 1); // Ping SEQR +1 
+    while ((getSLCR()  & 0x20) == 1 )   //Wait for ping ready
+    {
+         wiz_delay_ms(100);
+    }
+    setSLCR( (getSLCR() | 0x20) ) ;     //Send ping cmd
+}
+
+

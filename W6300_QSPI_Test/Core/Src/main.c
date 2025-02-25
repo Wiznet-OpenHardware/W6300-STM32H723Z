@@ -85,9 +85,9 @@ NOR_HandleTypeDef hnor1;
 /* USER CODE BEGIN PV */
 //uint8_t W6300_mode = QSPI_MODE;//0; //W6100 >> 0xFF
 wiz_NetInfo gWIZNETINFO = {.mac = {0x00, 0x08, 0xdc, 0xa3, 0xb4, 0xc5},
-                           .ip = {192, 168, 0, 44},
+                           .ip = {192, 168, 11, 44},
                            .sn = {255, 255, 255, 0},
-                           .gw = {192, 168, 0, 1},
+                           .gw = {192, 168, 11, 1},
                            .dns = {8, 8, 8, 8},
                            .lla = {0xfe, 0x80, 0x00, 0x00,
                                    0x00, 0x00, 0x00, 0x00,
@@ -232,112 +232,70 @@ int main(void)
   HAL_Delay(1000*3);
 #endif
 
-  W6300Initialze();
 
-printf("===================================\r\n");
-printf("==========ES_TEST_start============\r\n");
-
-
-ES_SW_Reset();
-ES_HW_Reset();
-ES_Set_Clk_25Mhz();
-ES_Set_Clk_100Mhz();
+  HAL_RCCEx_GetPLL2ClockFreq(&temp_PLL2_Clk_data);
+  printf("QSPI CLK %dMhz \r\n", temp_PLL2_Clk_data.PLL2_R_Frequency / 2 / 1000000);
+  SPI_CLK_SET(10);
+  HAL_RCCEx_GetPLL2ClockFreq(&temp_PLL2_Clk_data);
+  printf("QSPI CLK %dMhz \r\n", temp_PLL2_Clk_data.PLL2_R_Frequency / 2 / 1000000);
 
   W6300Initialze();
 
-
-printf("===================================\r\n");
-printf("=======Common Reg Check start======\r\n");
-
-ES_common_register_0x0000_read();
-ES_common_register_0x0002_read();
-ES_common_register_0x2000_read(); //0x01이 반환되는게 맞나???
-
-
-printf("===================================\r\n");
-printf("==========buffer TEST start========\r\n");
-
-uint16_t len_max = 16;
-uint8_t buffer[len_max];
-/* TX TEST */
-for(int i = 0; i < 8; i++)
-{
-  for(int len =1; len <= len_max; len=len*2)
-  {
-    if (len > 1024)
-    {
-      printf("====TX_SOCKET[%d]- %d KByte Read/Write====\r\n", i , len /1024);
-    }
-    else
-    {
-      printf("====TX_SOCKET[%d]- %d Byte  Read/Write====\r\n", i , len );
-    }
-    memset(buffer, (len >> 8) + (len & 0xff) , len);
-    ES_SOCKET_buffer_write_read( WIZCHIP_TXBUF_BLOCK(i), buffer, len);
-  }
-}
-
-/* RX TEST */
-for(int i = 0; i < 8; i++)
-{
-  for(int len =1; len <= len_max; len=len*2)
-  {
-    if (len > 1024)
-    {
-      printf("====RX_SOCKET[%d]- %d KByte Read/Write====\r\n", i , len /1024);
-    }
-    else
-    {
-      printf("====RX_SOCKET[%d]- %d Byte  Read/Write====\r\n", i , len );
-    }
-    memset(buffer, (len >> 8) + (len & 0xff) , len);
-    ES_SOCKET_buffer_write_read( WIZCHIP_RXBUF_BLOCK(i), buffer, len);
-  }
-}
-
-
-
-
-printf("===================================\r\n");
-printf("========= Phy Reg Check start======\r\n");
-
-/* power down Mode and Reset TEST*/
-ES_LINK_STATUS();
-ES_GET_PHY_MODE(); 
-ES_GET_PHY_POWER_DOWN(); 
-
-ES_SET_PHY_POWER_DOWN(PHY_POWER_DOWN);
-ES_SET_PHY_MODE(PHYMODE_10_FDX);
-ES_SET_PHY_MODE(PHYMODE_100_HDX);
-
-ES_GET_PHY_MODE(); 
-ES_GET_PHY_POWER_DOWN(); 
-ES_PHY_SW_RESET();
-
-ES_GET_PHY_POWER_DOWN(); 
-ES_SET_PHY_POWER_DOWN(PHY_POWER_DOWN);
-ES_GET_PHY_POWER_DOWN(); 
-
-
-ES_PHY_SW_RESET();
-
-
-printf("===================================\r\n");
-
-/* chip init start*/
-
-
-
-  chip_hw_reset();
-  W6300Initialze();
   //ctlwizchip(CW_SYS_UNLOCK, &syslock);
   printf("W6300Initialze_ok \r\n"); 
-  ctlnetwork(CN_SET_NETINFO, &gWIZNETINFO);
 
-  //SET_W6300_IF_MODE
   printf("CHIP ID(%04x) = 0x%04x \r\n", _CIDR_, getCIDR());
   printf("VERSION(%04x) = 0x%04x \r\n", _VER_, getVER());
-  
+  int32_t cnt = 0;
+
+/*Application code */
+
+/* ES TEST*/
+#if 1
+  ESTEST();
+#endif 
+
+
+/* buffer read write TEST - for Wiz630io TEST*/
+#if 1
+
+  HAL_RCCEx_GetPLL2ClockFreq(&temp_PLL2_Clk_data);
+  printf("QSPI CLK %dMhz \r\n", temp_PLL2_Clk_data.PLL2_R_Frequency / 2 / 1000000);
+  SPI_CLK_SET(30);
+  HAL_RCCEx_GetPLL2ClockFreq(&temp_PLL2_Clk_data);
+  printf("QSPI CLK %dMhz \r\n", temp_PLL2_Clk_data.PLL2_R_Frequency / 2 / 1000000);
+
+
+  HAL_Delay(1500);
+  HAL_Delay(50);
+  if(QSPI_MODE < 0x03)
+  {
+    printf("Software Mode set : QSPI %s\r\n",mode_char[QSPI_MODE]);
+  }
+  else
+  {
+    printf("Software Mode set : BUS %02x \r\n", QSPI_MODE);
+  }
+
+  while(1){
+    int  len = 8;
+    uint8_t buffer[len];
+    /* TX TEST */
+    for(uint16_t t = 0 ; t <= 0xff ; t++ ) {
+      memset(buffer, t , len);
+      printf("[%02x]\r\n", t );
+      uint8_t result =  ES_SOCKET_buffer_write_read( WIZCHIP_TXBUF_BLOCK(i), buffer, len);
+      HAL_Delay(100);
+      // memset(buffer, t , len);
+      // ES_SOCKET_buffer_write_read( WIZCHIP_RXBUF_BLOCK(i), buffer, len);
+    }
+    HAL_Delay(4000);
+  }
+#endif 
+
+/* networ init */
+  ctlnetwork(CN_SET_NETINFO, &gWIZNETINFO);
+
   for (i = 0; i < 8; i++)
   {
     printf("%d : max size = %d k \r\n", i, getSn_TxMAX(i));
@@ -376,51 +334,12 @@ printf("===================================\r\n");
 
   while (1)
   {
-
-#if _TESTMODE_ == _LOOPBACK_MODE_
-   
     if ((retval = loopback_tcps(SOCKET, g_udp_buf_main, 5000)) < 0)
     {
       printf(" loopback_udps error : %d\n", retval);
       while (1)
           ;
     }
-   
-#elif _TESTMODE_ == _IPERF_RECV_MODE_
-
-     uint32_t pack_len = 0;
-    switch(getSn_SR(SOCKET))
-    {
-        case SOCK_ESTABLISHED :
-            printf("test\r\n");
-
-            while(1)
-            {
-                getsockopt(SOCKET, SO_RECVBUF, &pack_len);
-                if (pack_len > 0)
-                {
-                    recv(SOCKET, (uint8_t *)g_iperf_buf,  ETHERNET_BUF_MAX_SIZE  - 1  );
-                }
-            }
-            break;
-        case SOCK_CLOSE_WAIT :
-            disconnect(SOCKET);
-            break;
-        case SOCK_INIT :
-            listen(SOCKET);
-            break;
-        case SOCK_CLOSED:
-            socket(SOCKET, Sn_MR_TCP, PORT_IPERF, 0x20); // 0x20 = no delay ack
-            break;
-        default:
-            break;
-    }
-
-#elif _TESTMODE_ == _IPERF_SEND_MODE_
-    
-    iperf_tcpc(SOCKET, g_udp_buf_main, WIZ_Dest_IP, PORT_IPERF, 1000000, 1);
-   
-#endif 
   }
 }
 

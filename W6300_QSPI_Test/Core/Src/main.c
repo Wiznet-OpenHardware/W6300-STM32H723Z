@@ -253,11 +253,39 @@ int main(void)
 /* ES TEST*/
 #if 1
   ESTEST();
+
+  chip_hw_reset();
+  W6300Initialze();
+  
+/* networ init */
+  ctlnetwork(CN_SET_NETINFO, &gWIZNETINFO);
+  
+  for (i = 0; i < 8; i++)
+  {
+    printf("%d : max size = %d k \r\n", i, getSn_TxMAX(i));
+  }
+  print_network_information();
+  ES_NET_TEST();
+
+
+ set_phy_loopback_mode_MDIO();
+  ES_loopback_udp();
+  // ES_NET_TEST();
+
+  while (1)
+  {
+    if ((retval = loopback_tcps(SOCKET, g_udp_buf_main, 5000)) < 0)
+    {
+      printf(" loopback_udps error : %d\n", retval);
+      while (1)
+          ;
+    }
+  }
 #endif 
 
 
 /* buffer read write TEST - for Wiz630io TEST*/
-#if 1
+#if 0
 
   HAL_RCCEx_GetPLL2ClockFreq(&temp_PLL2_Clk_data);
   printf("QSPI CLK %dMhz \r\n", temp_PLL2_Clk_data.PLL2_R_Frequency / 2 / 1000000);
@@ -279,12 +307,12 @@ int main(void)
 
   while(1){
     int  len = 8;
-    uint8_t buffer[len];
+    uint8_t buffer[10];
     /* TX TEST */
-    for(uint16_t t = 0 ; t <= 0xff ; t++ ) {
-      memset(buffer, t , len);
+    for(uint16_t t = 1 ; t <= 10 ; t++ ) {
+      memset(buffer, t , t);
       printf("[%02x]\r\n", t );
-      uint8_t result =  ES_SOCKET_buffer_write_read( WIZCHIP_TXBUF_BLOCK(i), buffer, len);
+      uint8_t result =  ES_TEST_BUFFER_TEST_write_read( WIZCHIP_TXBUF_BLOCK(i), buffer, t);
       HAL_Delay(100);
       // memset(buffer, t , len);
       // ES_SOCKET_buffer_write_read( WIZCHIP_RXBUF_BLOCK(i), buffer, len);

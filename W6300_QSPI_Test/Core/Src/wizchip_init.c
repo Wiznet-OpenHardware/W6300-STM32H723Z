@@ -446,7 +446,7 @@ void TRACE_OFF(void)
  
 void chip_hw_reset(void)
  {
-   printf("W6300 Hardware Reset \r\n" );
+   //printf("W6300 Hardware Reset \r\n" );
  	HAL_GPIO_WritePin(RSTn_GPIO_Port, RSTn_Pin, GPIO_PIN_RESET);
  	HAL_Delay(500);
  	HAL_GPIO_WritePin(RSTn_GPIO_Port, RSTn_Pin, GPIO_PIN_SET);

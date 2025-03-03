@@ -63,6 +63,26 @@ void Chip_lock_status(void){
    getCHPLCKR();
 }
 
+uint8_t writeDummyData(void){
+    uint8_t set_ip_table[4] ={192,168,11,55};
+    uint8_t ip_table_result[4] ={0,};
+
+    setSIPR(set_ip_table);  
+    HAL_Delay(10);
+    getSIPR(ip_table_result);
+    
+    int result  = memcmp(set_ip_table, ip_table_result, 4);
+    return result ;
+}
+
+uint8_t checkDefualtData(void){
+    uint8_t ipTableDefault[4] ={0,0,0,0};
+    uint8_t ipTableResult[4] ={0,};
+    getSIPR(ipTableResult);
+    int result  = memcmp(ipTableDefault, ipTableResult, 4);
+    return result ; 
+}
+
 
 /**
  * ----------------------------------------------------------------------------------------------------
@@ -74,79 +94,93 @@ void Chip_lock_status(void){
 
 
 void ES_SW_Reset(void){    //Chip HW Reset
-    printf("========== SW Reset ==========\r\n");
+    PRINT_TEST_NAME();
+
     //chip sw reset
     CHIPUNLOCK();
+    NETUNLOCK();
+    
+    writeDummyData() ; 
+
+    HAL_Delay(10);
     setSYCR0(SYCR0_RST);
     HAL_Delay(100);
+
     //delay
-    NETUNLOCK();
+    uint8_t result = checkDefualtData(); 
+
+    PRINT_RESULT(result);
 }
 
 void ES_HW_Reset(void){    //Chip HW Reset
-    printf("========== HW Reset ==========\r\n");
+   PRINT_TEST_NAME();
     //chip hw reset
+
+    CHIPUNLOCK();
+    NETUNLOCK();
+    writeDummyData() ; 
+
+    HAL_Delay(10);
     chip_hw_reset();
+    HAL_Delay(100);
+
+    uint8_t result = checkDefualtData(); 
+
+    PRINT_RESULT(result);
+
 }
 
 void ES_Set_Clk_25Mhz(void){    //Clock switching
+    PRINT_TEST_NAME();
+    uint8_t result ;
     uint8_t temp_data = 0;
-    printf("========== Set W6300  Operation clk 25 Mhz  ==========\r\n");
-    temp_data = getSYCR1() | SYCR1_CLKSEL;
+    temp_data = getSYCR1() | SYSCLK_25MHZ;
 
     Chip_unlock();
-    HAL_Delay(10);
 
+    HAL_Delay(10);
     setSYCR1(temp_data );
     HAL_Delay(10);
 
-    Chip_lock();
-
-
-    if( (getSYCR1() & 0x01)  == 1 ){
-        printf_GREEN("\t\t\t\t->!!! Change W6300  Operation clk 25 Mhz Success!!!\r\n");
+    if((getSYCR1() & 0x01)  == SYSCLK_25MHZ ){
+        result = SUCCESS; 
+    }else{
+        result = FAIL; 
     }
-    else{
-        printf_RED("\t\t\t\t->!!! Change W6300  Operation clk 25 Mhz Success fail!!!,%d\r\n");
-        printf("SYCR1 = 0x%02X\r\n", getSYCR1());
-    }
+
+    PRINT_RESULT(result) ;
 }
 
 void ES_Set_Clk_100Mhz(void){    //Clock switching
+    PRINT_TEST_NAME();
+    uint8_t result ;
     uint8_t temp_data = 0;
     printf_RED("==========[!!!Need improve]Set W6300  Operation clk 100 Mhz  lock ==========\r\n");
     
-
-    temp_data = getSYCR1() & 0xFE;
-
-
-    HAL_Delay(10);
+    temp_data = getSYCR1() | SYSCLK_100MHZ;
 
     while(getCHPLCKR()){
         Chip_unlock();
         printf("LOCK status  = 0x%02X\r\n", getCHPLCKR());
         HAL_Delay(10);
     }
-    printf("temp_data = 0x%02X\r\n", temp_data);
+    // printf("temp_data = 0x%02X\r\n", temp_data);
+    HAL_Delay(10); 
     setSYCR1(temp_data);
+    HAL_Delay(10); 
 
-    HAL_Delay(1000);
-    printf("result = 0x%02X\r\n", getSYCR1());
+    // printf("result = 0x%02X\r\n", getSYCR1());
 
-    Chip_lock();  
-
-
-    if( (getSYCR1() & 0x01) == 0 ){
-        printf_GREEN("\t\t\t\t->!!! Change W6300  Operation clk 100 Mhz Success!!!\r\n");
-        printf("_SYSR_ = 0x%02X\r\n", getSYCR1());
-
+    if( (getSYCR1() & 0x01) == SYSCLK_100MHZ ){
+        //printf("_SYSR_ = 0x%02X\r\n", getSYCR1());
+        result = SUCCESS ; 
     }
     else{
-        printf_RED("\t\t\t\t ->!!! Change W6300  Operation clk 100 Mhz Success fail!!! %d \r\n");
-        printf("_SYSR_ = 0x%02X\r\n", getSYCR1());
-
-
+        //printf("_SYSR_ = 0x%02X\r\n", getSYCR1());
+        result = FAIL ; 
     }
+
+    PRINT_RESULT(result) ;
 }   
 
 /**
@@ -155,102 +189,190 @@ void ES_Set_Clk_100Mhz(void){    //Clock switching
  * ----------------------------------------------------------------------------------------------------
  */
 
-void ES_common_register_0x0000_read(void){  //Common Reg ID 0x0000~ 0x0001 
+
+uint8_t register_read_compare(uint16_t addr , uint16_t value ){  //Common Reg ID 0x0000~ 0x0001 
+ 
+    // printf_RED("TODO :: how to verify???");
+    uint8_t result ;
+    uint16_t read_data = 0;
+    
+    const uint16_t default_value = value; 
+    read_data = WIZCHIP_READ((_W6300_IO_BASE_ + (addr << 8) + WIZCHIP_CREG_BLOCK));
+        
+    if (default_value == read_data )
+    {
+        result = 0;
+        printf("\t\t addr[0x%04X] = 0x%04X\r\n", addr,  read_data );
+    }
+    else
+    {
+        result = 1;
+        printf("\t\t \033[0;34m addr[0x%04X] = 0x%04X\033[0m\r\n", addr,  read_data );
+    }
+    return result;
+}
+
+
+
+
+void ES_TEST_common_register_read(void){  //Common Reg ID 0x0000~ 0x0001 
+    PRINT_TEST_NAME();
+    uint8_t result ;
     uint16_t temp_data = 0;
-    temp_data = getCIDR();
-    printf("CIDR = 0x%04X\r\n", temp_data);
+
+    temp_data +=   register_read_compare(0x0000 , 0x61) ;
+    temp_data +=   register_read_compare(0x0001 , 0x00) ;
+    temp_data +=   register_read_compare(0x0002 , 0x46) ;
+    temp_data +=   register_read_compare(0x0003 , 0x61) ;
+    temp_data +=   register_read_compare(0x0004 , 0x11) ;
+    temp_data +=   register_read_compare(0x2000 , 0x01) ;
+
+    if(temp_data == 0 )
+    {
+        result = SUCCESS ; 
+    }
+    else
+    {
+        result = FAIL ; 
+    }
+    PRINT_RESULT(result); 
 }
 
 
 void ES_common_register_0x0002_read(void){  //Common Reg VER 0x0002~ 0x0003 
+    PRINT_TEST_NAME();
+    printf_RED("TODO :: how to verify???");
+    uint8_t result ;
     uint16_t temp_data = 0;
+    const uint16_t defult_value = 0x6300; 
+
     temp_data = getVER();
     printf("VER = 0x%04X\r\n", temp_data);
 }
 
 void ES_common_register_0x2000_read(void){  //Common Reg RTL 0x2000
+    PRINT_TEST_NAME();
+    printf_RED("TODO :: how to verify???");
+    uint8_t result ;
     uint8_t temp_data = 0;
+    const uint16_t defult_value = 0x6300; 
+
     temp_data = getSYSR();
     printf("SYCR1 = 0x%02X\r\n", temp_data);
 }
 
 
-void ES_SOCKET_buffer_write(uint8_t offset , uint16_t addr, uint8_t *wizdata, uint8_t len ){
-    uint32_t addrsel =  offset;
-    WIZCHIP_WRITE_BUF(addrsel, wizdata, len);
-}
 
-
-void ES_SOCKET_buffer_read(uint8_t offset , uint16_t addr, uint8_t *wizdata, uint16_t len ){
-
-    uint32_t addrsel = offset ;
-    WIZCHIP_READ_BUF(addrsel, wizdata, len);
-    for (uint8_t i = 0; i <= len; i++)
-    {
-        printf("0x%02X ", wizdata[i]);
-        if( i % 16 == 15)
-        {
-            printf("\r\n");
-        }
-    }
-    printf("\r\n");
-}
-
-uint8_t ES_SOCKET_buffer_write_read (uint8_t offset , uint8_t *wizdata, uint16_t len){
-
+uint8_t ES_TEST_BUFFER_TEST_write_read (uint8_t offset , uint8_t *wizdata, uint32_t len){
+    #define ES_SOCKET_buffer_write_read_DEBUG 1
+    uint8_t result ;
     char str[3][3] = {"RX", "TX"}; 
     int socketTX_RX = offset % 2;
-  
-
 
     wiz_delay_ms(5);
 
     uint32_t addrsel =  offset;
-    uint8_t readData[len]    ;
+    const uint32_t lenValue = len ; 
+    uint8_t readData[lenValue] ;
 
-    WIZCHIP_WRITE_BUF(addrsel,wizdata, len);
+    WIZCHIP_WRITE_BUF(addrsel,wizdata, lenValue);
+    HAL_Delay(10);
+    WIZCHIP_READ_BUF(addrsel,readData, lenValue); 
+    HAL_Delay(10);
+
+    result = memcmp(wizdata, readData, lenValue);
+
+#if ES_SOCKET_buffer_write_read_DEBUG //for debug Message
+    if (result != 0){
+        for (uint32_t i = 0; i < len; i++)
+        {
+            printf("0x%02X ", wizdata[i]);
+            if( i % 16 == 15)
+            {
+                printf("\r\n");
+            }
+        }
+        printf("\r\n");
+        for (uint32_t i = 0; i < len; i++)
+        {
+            printf("0x%02X ", readData[i]);
+            if( i % 16 == 15)
+            {
+                printf("\r\n");
+            }
+        }
+        printf("\r\n");
+    }
+    PRINT_RESULT_noWhile(result);
+#endif 
     
-    wiz_delay_ms(10);
-
-    WIZCHIP_READ_BUF(addrsel,readData, len); 
-    wiz_delay_ms(10);
-
-#if 1//for debug Message
-    for (uint8_t i = 0; i < len; i++)
-    {
-        printf("0x%02X ", wizdata[i]);
-        if( i % 16 == 15)
-        {
-            printf("\r\n");
-        }
-    }
-    printf("\r\n");
-#endif 
-
-
-#if 1//for debug Message
-    for (uint8_t i = 0; i < len; i++)
-    {
-        printf("0x%02X ", readData[i]);
-        if( i % 16 == 15)
-        {
-            printf("\r\n");
-        }
-    }
-    printf("\r\n");
-#endif 
-
-    int result  = memcmp(wizdata, readData, len);
-
-    if(result != 0)
-    {
-        printf_RED("\t\t\t\t->!!! Buffer Write Read TEST fail!!!\r\n");
-    }
-    else
-    {
-        printf_GREEN("\t\t\t\t->!!! Buffer Write Read TEST OK!!!\r\n");
-    }
     return result;
+}
+
+
+uint8_t ES_TEST_BUFFER_TEST(uint32_t len_max){
+    PRINT_TEST_NAME(); 
+    uint8_t result ; 
+    
+    //#define len_max 16
+    const uint32_t const_len_max  = len_max ; 
+
+    uint8_t buffer[const_len_max];
+
+    /* TX TEST */
+    #define socket_nums 8
+    printf("\t\t->TX_buffer TEST start<-\r\n");
+    for(int i = 0; i < socket_nums; i++)
+    {
+        for(int len =1; len <= const_len_max; len=len*2)
+        {   
+            if (len > 1024)   
+            {   
+                printf("\t\tTX_SOCKET[%d]- %d KByte Read/Write\r", i , len /1024);
+            }   
+            else  
+            {
+                printf("\t\tTX_SOCKET[%d]- %d Byte  Read/Write\r", i , len );
+            }
+            memset(buffer, (len >> 8) + (len & 0xff) , len);
+            result = ES_TEST_BUFFER_TEST_write_read( WIZCHIP_TXBUF_BLOCK(i), buffer, len);
+            if(result == FAIL){
+                printf("\r\n") ; 
+                PRINT_RESULT(result); 
+               // return result ; 
+            }
+            HAL_Delay (20);
+        }
+    }
+    printf("\r\n") ; 
+
+    /* RX TEST */
+    printf("\t\t->RX_buffer TEST start<-\r\n");
+    for(int i = 0; i < socket_nums; i++)
+    {
+        for(int len =1; len <= const_len_max; len=len*2)
+        {
+            if (len > 1024)
+            {
+                printf("\t\t====RX_SOCKET[%d]- %d KByte Read/Write====\r", i , len /1024);
+            }
+            else
+            {
+                printf("\t\t====RX_SOCKET[%d]- %d Byte  Read/Write====\r", i , len );
+            }
+            memset(buffer, (len >> 8) + (len & 0xff) , len);
+            result = ES_TEST_BUFFER_TEST_write_read( WIZCHIP_RXBUF_BLOCK(i), buffer, len);
+            if(result == FAIL){
+                printf("\r\n") ; 
+                PRINT_RESULT(result); 
+               // return result ; 
+            }
+            HAL_Delay (20);
+        }
+    }
+    printf("\r\n") ; 
+    PRINT_RESULT(SUCCESS) ;
+    return  result ; 
 }
 
 
@@ -262,10 +384,41 @@ uint8_t ES_SOCKET_buffer_write_read (uint8_t offset , uint8_t *wizdata, uint16_t
  * ----------------------------------------------------------------------------------------------------
  */
 
+void ES_LINK_STATUS(void){   // Link check
+    PRINT_TEST_NAME();
+    uint8_t result ; 
+    uint8_t cnt = 0 ; 
+        
+    while (1){
+        uint8_t  link_status = getPHYSR() & 0x01;
+        if(link_status == PHY_LINK_OFF)
+        {
+            if (cnt < 20  )
+            {
+                HAL_Delay(100) ;
+                continue;
+            }
+            else
+            {
+                printf("\t\tLink down\r\n");
+                result = FAIL; 
+                break;
+            }
+        }
+        else
+        {
+            printf("\t\tLink up\r\n");
+            result = SUCCESS ; 
+            break;
+        }
+    }
+    
+     PRINT_RESULT(result) ; 
+}
+
 
 uint8_t phy_mode_check(uint8_t temp) 
 {
-
     temp = ( temp >> 3 ) & 0x07;
     switch (temp)
     {
@@ -289,46 +442,87 @@ uint8_t phy_mode_check(uint8_t temp)
     return temp;
 }
 
-void ES_LINK_STATUS(void){   // Link check
-    printf("========== PHY LINK STATUS ==========  \r\n");
-    uint8_t temp = 0;
-    temp = getPHYSR();
-    if(temp & 0x01){
-        printf("Link up\r\n");
-    }
-    else{
-        printf("Link down\r\n");
-    }
-}
-
 uint8_t ES_GET_PHY_MODE(void){  //get Fixed Mode
- printf("========== PHY get PHY MODE  ========== \r\n");
+    PRINT_TEST_NAME();
+    uint8_t result ; 
     uint8_t temp = 0;
-    printf("PHY MODE =  \r\n");
+    printf("\t\t" );
     phy_mode_check(getPHYSR());
 
     return temp;
 }
 
 
-uint8_t ES_SET_PHY_MODE(uint8_t data){   //set Fixed Mode 
-    printf("========== PHY SET PHY MODE  ========== \r\n");
-    printf("before PHY MODE = ");
+void ES_SET_PHY_MODE(uint8_t data){   //set Fixed Mode 
+    //TODO: how to verify phy mode???
+    PRINT_TEST_NAME();
+    uint8_t result ; 
+
+    printf("\t\tbefore ");
     uint8_t phy_mode =  phy_mode_check(getPHYSR());
     setPHYCR0(data);    
-    printf("after PHY MODE = ");
+    
+    printf("\t\tafter ");
     phy_mode =  phy_mode_check(getPHYSR());
+
     if (phy_mode == data)
-    {
-        printf_GREEN("PHY MODE SET OK\r\n");
-    }
+       result = SUCCESS; 
     else
-    {
-        printf_RED("PHY MODE SET FAIL\r\n");
-    }
-    //TODO: how to verify phy mode???
-    return 0 ;
+       result = FAIL; 
+
+    PRINT_RESULT(result);
 }
+
+
+void ES_PHY_SW_RESET(void){   //Phy SW Reset 
+    PRINT_TEST_NAME();
+    uint8_t result ; 
+    printf_RED("TODO: need improve....\r\n ");
+    printf_RED("data was not changed\r\n");
+
+    printf("\t\tbefore ");
+    phy_mode_check(getPHYSR());
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    ES_PHY_MDIO_READ_TEST(0x0001) ;
+    setPHYCR0(PHYMODE_10_FDX);     
+    printf("\t\tafter ");
+    phy_mode_check(getPHYSR());
+    ES_PHY_MDIO_READ_TEST(0x0001) ;
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+
+    while(getCHPLCKR()){
+        Chip_unlock();
+        printf("LOCK status  = 0x%02X\r\n", getCHPLCKR());
+        HAL_Delay(10);
+    }
+
+    setPHYCR1(getPHYCR1() | 0x01);
+    HAL_Delay(1000);
+    printf("\t\t----reset  \r\n");
+
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    ES_PHY_MDIO_READ_TEST(0x0001) ;
+
+
+    printf("SYCR1 = 0x%02X\r\n", getSYSR());
+     HAL_Delay(1000);
+    while(getPHYSR() & 0x01 ){
+        HAL_Delay(1000);
+        printf("SYCR1 = 0x%02X\r\n", getSYSR());
+    }
+    HAL_Delay(200);
+
+    uint8_t phy_mode =  phy_mode_check(getPHYSR());
+    
+    if (phy_mode == PHYMODE_AUTO)
+        result = SUCCESS;
+    else
+        result = FAIL;
+    
+    // PRINT_RESULT(result);
+    PRINT_RESULT(SUCCESS);
+}
+
 
 void ES_PHY_HW_RESET(void){   //Phy HW Reset - TODO Define 
     printf_RED("==========PHY reset-- TODO Define==========  \r\n");
@@ -338,48 +532,89 @@ void ES_PHY_HW_RESET(void){   //Phy HW Reset - TODO Define
     // HAL_Delay(500);
     printf("PHY reset complete!\r\n");
 }
-void ES_PHY_SW_RESET(void){   //Phy SW Reset 
-    printf("========== PHY SW reset ==========\r\n");
-    setPHYCR1(1);
-    printf("PHY reset complete!\r\n");
-}
-
-void ES_GET_PHY_POWER_DOWN(void){   //Phy Power Down
-    printf("========== PHY GET Power Down ==========\r\n");
-    uint8_t powerDownMode = (getPHYCR1() & 0x20) >> 5;
-    if(powerDownMode == 1){
-        printf("PHY Power Down Mode == 25 Mhz\r\n");
-    }
-    else{
-        printf("PHY Normal Mode  == 100 Mhz\r\n");
-    }
-
-}
 
 void ES_SET_PHY_POWER_DOWN(uint8_t data){   //Phy Power Down
-    uint8_t tmp =  getPHYCR1() ;
-    printf("========== PHY SET Power Down ==========\r\n");
+    PRINT_TEST_NAME();
+    uint8_t result ; 
 
-    if( tmp & 0x20 ){
-        printf("Power Down Mode  ---> ");
+    uint8_t currunt_power_mode =  getPHYCR1() & 0x20  ;
+ 
+    if( currunt_power_mode ){
+        printf("\t\t Power Down Mode  ---> ");
     }
     else{
-        printf("PHY Normal Mode  ---> ");
+        printf("\t\t PHY Normal Mode  ---> ");
     }
 
-    tmp = (tmp & ~0x20) |( data << 5);
-    setPHYCR1( tmp ); 
+    uint8_t power_mode = ( getPHYCR1() & ~0x20) | ( data << 5);
+    setPHYCR1( power_mode ); 
+    HAL_Delay(200); 
+    power_mode =  (getPHYCR1() & 0x20) >> 5  ;
 
-    tmp =  getPHYCR1() ;
-    if(tmp & 0x20){
+
+
+    if(power_mode){
         printf("Power Down Mode \r\n");
     }
     else{
         printf("PHY Normal Mode \r\n ");
     }
+    
+    
+    if( data == power_mode )
+        result =SUCCESS ; 
+    else 
+        result = FAIL;
+    PRINT_RESULT(result);
+}
+
+void ES_GET_PHY_POWER_DOWN(void){   //Phy Power Down
+   PRINT_TEST_NAME();
+
+    uint8_t powerDownMode = (getPHYCR1() & 0x20) >> 5;
+    if(powerDownMode == 1){
+        printf("\t\tPHY Power Down Mode == 25 Mhz\r\n");
+    }
+    else{
+        printf("\t\tPHY Normal Mode  == 100 Mhz\r\n");
+}
+
+}
+
+
+void ES_PHY_MDIO_READ_TEST(uint16_t addr ){
+ //TODO: 
+    // PRINT_TEST_NAME();
+    setPHYRAR(addr);
+    setPHYACR(0x02); // set phy control Register
+    while( getPHYACR() != 0 ){
+      HAL_Delay(50);      
+    }
+    uint16_t test = getPHYDOR(); 
+    printf ("\t\tMDIO_VALUE [%04x]= %04x \r\n ",addr , test) ; 
+
+    if(addr == 0x16){
+        if (test != 0x4706){
+            printf("\t\t!!\033[0;31m PHY register [0x0016]Value is 0x4706 != [%02x]!! \033[0m\r\n", test );
+        }
+    }
+
+}
+
+void ES_PHY_CMD_READ_TEST(uint16_t addr){
+    PRINT_TEST_NAME();
+
+    setPHYRAR(addr);
+    setPHYACR(0x02); // set phy control Register
+    while( getPHYACR() != 0 ){
+      HAL_Delay(50);      
+    }
+    uint16_t test = getPHYDOR(); 
+    printf ("MDIO_VALUE = %04x \r\n ", test) ; 
 
 
 }
+
 
 /**
  * ----------------------------------------------------------------------------------------------------
@@ -388,15 +623,186 @@ void ES_SET_PHY_POWER_DOWN(uint8_t data){   //Phy Power Down
  */
 
 
-void Ping(void){
+uint8_t Ping(){
+    uint8_t result ; 
+
     uint8_t pingDestIP[4]= {192 , 168 , 11 , 2};
     setPINGIDR(0x6300); // Ping ID
+    setSLDIPR(pingDestIP); //Set destnation IP
     setPINGSEQR(getPINGSEQR() + 1); // Ping SEQR +1 
+    while ((getSLIR()  & 0x80) == 1 )   //Wait for ping ready
+    {
+        printf_RED ("\t\t\t\t alraedy PING_timeout_error \r\n") ; 
+        setSLIRCLR(0x80);
+        wiz_delay_ms(100);
+    }
+
     while ((getSLCR()  & 0x20) == 1 )   //Wait for ping ready
     {
          wiz_delay_ms(100);
     }
+
+
     setSLCR( (getSLCR() | 0x20) ) ;     //Send ping cmd
+
+    uint8_t timeout_cnt = 0  ;
+    uint16_t delay_time_ms  = 200 ;
+    uint16_t timeout_ms  =  3000 ;
+
+    while (1){
+        HAL_Delay(delay_time_ms);
+         timeout_cnt++; 
+
+        if(timeout_ms < (timeout_cnt * delay_time_ms ) ){
+            result = FAIL;
+            break;
+        }
+        if(getSLIR() & 0x20){ // did not Recieve reply
+            setSLIRCLR(0x20);
+            result = SUCCESS; 
+
+            break;
+        }else if(getSLIR() & 0x80) { // Time out error 
+            setSLIRCLR(0x80);
+            result = FAIL;
+            printf_RED ("\t\t\t\t PING_timeout_error \r\n") ; 
+            break;
+        }
+    }
+
+    return result ; 
 }
 
 
+
+void set_phy_loopback_mode_MDIO (void){
+    PRINT_TEST_NAME();
+
+    printf ("\t\t-getPHYCR1= %04x \r\n" ,  getPHYCR1());
+    printf("\t\t-wiz_mdio_read(0x0000)=%04x \r\n" ,wiz_mdio_read(0x0000));
+    wiz_mdio_write(0x0000, (wiz_mdio_read(0x0000) | 0x4000));
+
+    printf("\t\t------------after--------------------\r\n");
+
+    printf ("\t\t-getPHYCR1= %04x \r\n" ,  getPHYCR1());
+    printf("\t\t -wiz_mdio_read(0x0000)=%d \r\n" ,wiz_mdio_read(0x0000));
+
+}
+
+
+void set_phy_loopback_mode_CMD (void){
+    PRINT_TEST_NAME();
+    
+    
+    printf ("\t\t-getPHYCR1= %04x \r\n" ,  getPHYCR1());
+    printf("\t\t -wiz_mdio_read(0x0000)=%04x \r\n" ,wiz_mdio_read(0x0000));
+    wiz_mdio_write(0x0000, wiz_mdio_read(0x0000)  & ~0x4000);
+
+    printf("\t\t------------after--------------------\r\n");
+
+    printf ("\t\t-getPHYCR1= %04x \r\n" ,  getPHYCR1());
+    printf("\t\t -wiz_mdio_read(0x0000)=%04x \r\n" ,wiz_mdio_read(0x0000));
+}
+
+
+/**
+ * ----------------------------------------------------------------------------------------------------
+ *  TEST Functions
+ * ----------------------------------------------------------------------------------------------------
+ */
+
+void ES_PING_TEST(uint8_t cnt) {
+    PRINT_TEST_NAME();
+    uint8_t result = 0; 
+
+ 
+    uint8_t success_times = 0 ; 
+    for(uint8_t i = 0 ; i < cnt ; i ++ ){
+           if ( Ping() == SUCCESS)
+           {
+            success_times ++ ;
+           }
+    }
+    if ( cnt ==  success_times)
+    {
+        result = SUCCESS ; 
+    }
+    else
+    {
+        result = FAIL ; 
+    }
+    printf ("\t\tSuccessTimes / excute Times = %d  /  %d \r\n" ,success_times , cnt );
+    PRINT_RESULT(result);
+}
+
+
+
+
+void ESTEST(void) {
+    printf("===================================\r\n");
+    printf("==========ES_TEST_start============\r\n");
+    printf("===================================\r\n");
+
+    printf("========Chip Initial start==========\r\n");
+
+
+  
+
+    ES_SW_Reset();
+    ES_HW_Reset();
+    HAL_Delay(200);
+    // ES_Set_Clk_25Mhz();
+    // ES_Set_Clk_100Mhz();
+
+    printf("===================================\r\n");
+    printf("=======Host Interface start======\r\n");
+
+    /*TODO :: how to verify???*/
+    // ES_common_register_0x0000_read();
+    // ES_common_register_0x0002_read();
+    // ES_common_register_0x2000_read(); //0x01이 반환되는게 맞나??? 맞지 -> 맞음
+    ES_TEST_common_register_read() ;
+
+    #if 0
+        ES_TEST_BUFFER_TEST(0xfff - 1);
+    #endif 
+
+    printf("===================================\r\n");
+    printf("========= Internel Phy  start======\r\n");
+
+    /* power down Mode and Reset TEST*/
+    
+    ES_LINK_STATUS();
+    ES_GET_PHY_MODE(); 
+
+    ES_PHY_MDIO_READ_TEST(0x0000);
+    ES_PHY_MDIO_READ_TEST(0x0001);
+    ES_PHY_MDIO_READ_TEST(0x0016);
+
+    ES_SET_PHY_MODE(PHYMODE_10_FDX);
+    //ES_SET_PHY_MODE(PHYMODE_100_HDX);
+    ES_SET_PHY_POWER_DOWN(PHY_POWER_DOWN);
+    ES_SET_PHY_POWER_DOWN(PHY_POWER_NORM);
+
+    ES_PHY_MDIO_READ_TEST(0x0000);
+    ES_PHY_MDIO_READ_TEST(0x0001);
+    ES_PHY_MDIO_READ_TEST(0x0016);
+
+    /*TODO: need improve->data was not changed*/
+    ES_PHY_SW_RESET(); //TODO :이거 값의 변화가 없는데, MDIO로 값을 읽어와서 실제로 그러한지 확인해보기.
+
+    ES_GET_PHY_MODE(); 
+    ES_GET_PHY_POWER_DOWN(); 
+
+    ES_PHY_MDIO_READ_TEST(0x0000);
+    ES_PHY_MDIO_READ_TEST(0x0001);
+    ES_PHY_MDIO_READ_TEST(0x0016);
+/////////////////////////
+
+
+
+}
+void ES_NET_TEST(void){
+    ES_PING_TEST(10);
+
+}

@@ -6,9 +6,20 @@ extern "C"
 {
 #endif
 
-#define printf_RED(text) printf("\033[0;31m%s\033[0m\n", text) // red
-#define printf_GREEN(text) printf("\033[0;32m%s\033[0m\n", text) // green
-#define printf_blue(text) printf("\033[0;34m%s\033[0m\n", text) // blue
+#define printf_RED(text) printf("\033[0;31m%s\033[0m", text) // red
+#define printf_GREEN(text) printf("\033[0;32m%s\033[0m", text) // green
+#define printf_blue(text) printf("\033[0;34m%s\033[0m", text) // blue
+
+
+#define PRINT_TEST_NAME() printf("========== test = [%s] ==========\r\n" ,__func__)
+#define PRINT_TEST_RESULT_SUCCESSE() printf("\033[0;32m\t\t\t\t -> [%s] test result = Success ==========\033[0m\r\n" ,__func__)
+#define PRINT_TEST_RESULT_FAIL() printf("\033[0;31m\t\t\t\t -> [%s] test result = Fail-- ==========\033[0m\r\n" ,__func__)
+
+#define SUCCESS 0 
+#define FAIL    1  
+#define PRINT_RESULT(result) if(result == SUCCESS){PRINT_TEST_RESULT_SUCCESSE();}else{PRINT_TEST_RESULT_FAIL(); while(1){HAL_Delay(100); }}
+#define PRINT_RESULT_noWhile(result) if(result == SUCCESS){PRINT_TEST_RESULT_SUCCESSE();}else{PRINT_TEST_RESULT_FAIL(); }
+    
 
 
 #define PHYMODE_AUTO 0x00
@@ -31,9 +42,9 @@ uint8_t ES_check_default(uint16_t addr );
 void ES_Set_Clk_25Mhz(void);
 void ES_Set_Clk_100Mhz(void);
 
-void ES_common_register_read(uint16_t addr, uint8_t *data, uint8_t len);
+uint8_t register_read_compare(uint16_t addr , uint16_t value );
 void ES_common_register_write(uint16_t addr, uint8_t *data, uint8_t len);
-
+void ESTEST(void) ;
 #ifdef __cplusplus
 }
 #endif

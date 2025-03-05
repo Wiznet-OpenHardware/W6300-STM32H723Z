@@ -192,7 +192,6 @@ void ES_Set_Clk_100Mhz(void){    //Clock switching
 
 uint8_t register_read_compare(uint16_t addr , uint16_t value ){  //Common Reg ID 0x0000~ 0x0001 
  
-    // printf_RED("TODO :: how to verify???");
     uint8_t result ;
     uint16_t read_data = 0;
     
@@ -202,12 +201,12 @@ uint8_t register_read_compare(uint16_t addr , uint16_t value ){  //Common Reg ID
     if (default_value == read_data )
     {
         result = 0;
-        printf("\t\t addr[0x%04X] = 0x%04X\r\n", addr,  read_data );
+        printf("\t\tRead_value[0x%04X] = 0x%04X\r\n", addr,  read_data );
     }
     else
     {
         result = 1;
-        printf("\t\t \033[0;34m addr[0x%04X] = 0x%04X\033[0m\r\n", addr,  read_data );
+        printf("\t\t\033[0;34m addr[0x%04X] = 0x%04X\033[0m\r\n", addr,  read_data );
     }
     return result;
 }
@@ -239,32 +238,11 @@ void ES_TEST_common_register_read(void){  //Common Reg ID 0x0000~ 0x0001
 }
 
 
-void ES_common_register_0x0002_read(void){  //Common Reg VER 0x0002~ 0x0003 
-    PRINT_TEST_NAME();
-    printf_RED("TODO :: how to verify???");
-    uint8_t result ;
-    uint16_t temp_data = 0;
-    const uint16_t defult_value = 0x6300; 
-
-    temp_data = getVER();
-    printf("VER = 0x%04X\r\n", temp_data);
-}
-
-void ES_common_register_0x2000_read(void){  //Common Reg RTL 0x2000
-    PRINT_TEST_NAME();
-    printf_RED("TODO :: how to verify???");
-    uint8_t result ;
-    uint8_t temp_data = 0;
-    const uint16_t defult_value = 0x6300; 
-
-    temp_data = getSYSR();
-    printf("SYCR1 = 0x%02X\r\n", temp_data);
-}
 
 
 
 uint8_t ES_TEST_BUFFER_TEST_write_read (uint8_t offset , uint8_t *wizdata, uint32_t len){
-    #define ES_SOCKET_buffer_write_read_DEBUG 1
+    #define ES_SOCKET_buffer_write_read_DEBUG 0
     uint8_t result ;
     char str[3][3] = {"RX", "TX"}; 
     int socketTX_RX = offset % 2;
@@ -324,6 +302,7 @@ uint8_t ES_TEST_BUFFER_TEST(uint32_t len_max){
     printf("\t\t->TX_buffer TEST start<-\r\n");
     for(int i = 0; i < socket_nums; i++)
     {
+        printf("\r\n");
         for(int len =1; len <= const_len_max; len=len*2)
         {   
             if (len > 1024)   
@@ -341,7 +320,7 @@ uint8_t ES_TEST_BUFFER_TEST(uint32_t len_max){
                 PRINT_RESULT(result); 
                // return result ; 
             }
-            HAL_Delay (20);
+            HAL_Delay (100);
         }
     }
     printf("\r\n") ; 
@@ -350,15 +329,16 @@ uint8_t ES_TEST_BUFFER_TEST(uint32_t len_max){
     printf("\t\t->RX_buffer TEST start<-\r\n");
     for(int i = 0; i < socket_nums; i++)
     {
+        printf("\r\n");
         for(int len =1; len <= const_len_max; len=len*2)
         {
             if (len > 1024)
             {
-                printf("\t\t====RX_SOCKET[%d]- %d KByte Read/Write====\r", i , len /1024);
+                printf("\t\tRX_SOCKET[%d]- %d KByte Read/Write\r", i , len /1024);
             }
             else
             {
-                printf("\t\t====RX_SOCKET[%d]- %d Byte  Read/Write====\r", i , len );
+                printf("\t\tRX_SOCKET[%d]- %d Byte  Read/Write\r", i , len );
             }
             memset(buffer, (len >> 8) + (len & 0xff) , len);
             result = ES_TEST_BUFFER_TEST_write_read( WIZCHIP_RXBUF_BLOCK(i), buffer, len);
@@ -367,7 +347,7 @@ uint8_t ES_TEST_BUFFER_TEST(uint32_t len_max){
                 PRINT_RESULT(result); 
                // return result ; 
             }
-            HAL_Delay (20);
+            HAL_Delay (100);
         }
     }
     printf("\r\n") ; 
@@ -454,7 +434,6 @@ uint8_t ES_GET_PHY_MODE(void){  //get Fixed Mode
 
 
 void ES_SET_PHY_MODE(uint8_t data){   //set Fixed Mode 
-    //TODO: how to verify phy mode???
     PRINT_TEST_NAME();
     uint8_t result ; 
 
@@ -474,10 +453,10 @@ void ES_SET_PHY_MODE(uint8_t data){   //set Fixed Mode
 }
 
 
-void ES_PHY_SW_RESET(void){   //Phy SW Reset 
+void ES_PHY_SW_RESET_TEST3(void){   //Phy SW Reset 
     PRINT_TEST_NAME();
     uint8_t result ; 
-    printf_RED("TODO: need improve....\r\n ");
+    printf_RED("TODO: need improve....\r\n");
     printf_RED("data was not changed\r\n");
 
     printf("\t\tbefore ");
@@ -487,8 +466,13 @@ void ES_PHY_SW_RESET(void){   //Phy SW Reset
     setPHYCR0(PHYMODE_10_FDX);     
     printf("\t\tafter ");
     phy_mode_check(getPHYSR());
-    ES_PHY_MDIO_READ_TEST(0x0001) ;
     ES_PHY_MDIO_READ_TEST(0x0000) ;
+    ES_PHY_MDIO_READ_TEST(0x0001) ;
+    // // setPHYCR0(PHYMODE_AUTO);    
+    // printf("\t\tafter ");
+    // phy_mode_check(getPHYSR());
+    // ES_PHY_MDIO_READ_TEST(0x0000) ;
+    // ES_PHY_MDIO_READ_TEST(0x0001) ;
 
     while(getCHPLCKR()){
         Chip_unlock();
@@ -496,21 +480,468 @@ void ES_PHY_SW_RESET(void){   //Phy SW Reset
         HAL_Delay(10);
     }
 
+    //  setPHYCR1(getPHYCR1() | 0x01);
+    //wiz_mdio_write(PHYRAR_BMCR, wiz_mdio_read(PHYRAR_BMCR) | BMCR_RST);
+    
+    wiz_mdio_write(PHYRAR_BMCR, wiz_mdio_read(PHYRAR_BMCR) | BMCR_RST);
+    wiz_mdio_write(PHYRAR_BMCR, wiz_mdio_read(PHYRAR_BMCR) | BMCR_SPD );
+    printf("\t\t----set  BCMR_SPD \r\n");
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    wiz_mdio_write(PHYRAR_BMCR, wiz_mdio_read(PHYRAR_BMCR) & ~BMCR_RST);
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+ 
+ 
+    wiz_mdio_write(PHYRAR_BMCR, wiz_mdio_read(PHYRAR_BMCR) | BMCR_RST);
+    wiz_mdio_write(PHYRAR_BMCR, wiz_mdio_read(PHYRAR_BMCR) & ~BMCR_SPD );
+    printf("\t\t----clear  BCMR_SPD \r\n");
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    wiz_mdio_write(PHYRAR_BMCR, wiz_mdio_read(PHYRAR_BMCR) & ~BMCR_RST);
+    printf("\t\t----clear  BCMR_SPD \r\n");
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    wiz_mdio_write(PHYRAR_BMCR, wiz_mdio_read(PHYRAR_BMCR) | BMCR_RST);
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    // ES_HW_Reset();
+
+    wiz_mdio_write(PHYRAR_BMCR, wiz_mdio_read(PHYRAR_BMCR) | BMCR_RST);
+    wiz_mdio_write(PHYRAR_BMCR, wiz_mdio_read(PHYRAR_BMCR) | BMCR_SPD );
+    printf("\t\t----set  BCMR_SPD \r\n");
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    wiz_mdio_write(PHYRAR_BMCR, wiz_mdio_read(PHYRAR_BMCR) & ~BMCR_RST);
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+ 
+
+
+
+    ES_HW_Reset();
+    printf("HW-RESET\r\n");
+    HAL_Delay(200);   
+     HAL_Delay(200);
+
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+
+        HAL_Delay(200);
+
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+        HAL_Delay(200);
+
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    // }
+
+
+    uint8_t phy_mode =  phy_mode_check(getPHYSR());
+    
+    if (phy_mode == PHYMODE_AUTO)
+        result = SUCCESS;
+    else
+        result = FAIL;
+    
+    // PRINT_RESULT(result);
+    PRINT_RESULT(SUCCESS);
+}
+void ES_PHY_SW_RESET_TEST(void){   //Phy SW Reset 
+    PRINT_TEST_NAME();
+    uint8_t result ; 
+    printf_RED("TODO: need improve....\r\n");
+    printf_RED("data was not changed\r\n");
+    printf("\t\twait Phy link up \r\n");
+
+//case 1 
+    ES_HW_Reset(); 
+    HAL_Delay(1000);
+
+    printf("set setPHYCR0 = PHYMODE_10_FDX\r\n"); 
+    while(getCHPLCKR()){
+        Chip_unlock();
+        printf("LOCK status  = 0x%02X\r\n", getCHPLCKR());
+        HAL_Delay(10);
+    }
+    printf( "before  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    setPHYCR0(PHYMODE_10_FDX);     
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    
+    printf("MDIO[0x0000] |= 0x80  \r\n");
+    wiz_mdio_write(PHYRAR_BMCR, wiz_mdio_read(PHYRAR_BMCR) | BMCR_RST);
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+
+
+//case 1-2
+    ES_HW_Reset(); 
+    HAL_Delay(1000);
+
+    printf("set setPHYCR0 = PHYMODE_10_FDX\r\n"); 
+    while(getCHPLCKR()){
+        Chip_unlock();
+        printf("LOCK status  = 0x%02X\r\n", getCHPLCKR());
+        HAL_Delay(10);
+    }
+    printf( "before  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    // setPHYCR0(PHYMODE_10_FDX);     
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    
+    printf("MDIO[0x0000] |= 0x80  \r\n");
+    wiz_mdio_write(PHYRAR_BMCR, wiz_mdio_read(PHYRAR_BMCR) | BMCR_RST);
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+
+
+
+
+     
+//case 2 
+    ES_HW_Reset(); 
+    HAL_Delay(1000);
+
+    printf("set setPHYCR0 = PHYMODE_10_FDX"); 
+    while(getCHPLCKR()){
+        Chip_unlock();
+        printf("LOCK status  = 0x%02X\r\n", getCHPLCKR());
+        HAL_Delay(10);
+    }
+    printf( "before  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    setPHYCR0(PHYMODE_10_FDX);     
+
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+
+    printf("MDIO[0x0000] |= 0x80  \r\n");
+    //wiz_mdio_write(PHYRAR_BMCR, wiz_mdio_read(PHYRAR_BMCR) | BMCR_RST);
     setPHYCR1(getPHYCR1() | 0x01);
     HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);   
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+
+    setPHYCR1(getPHYCR1() | 0x01);
+    printf("setPHYCR1(getPHYCR1() | 0x01)\r\n") ;
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+
+
+
+     
+//case 3
+    ES_HW_Reset(); 
+    HAL_Delay(1000);
+
+    printf("set setPHYCR0 = PHYMODE_10_FDX"); 
+    while(getCHPLCKR()){
+        Chip_unlock();
+        printf("LOCK status  = 0x%02X\r\n", getCHPLCKR());
+        HAL_Delay(10);
+    }
+    printf( "before  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    // setPHYCR0(PHYMODE_10_FDX);     
+    wiz_mdio_write(PHYRAR_BMCR, wiz_mdio_read(PHYRAR_BMCR) & ~(uint16_t)BMCR_SPD);
+
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+
+    printf("MDIO[0x0000] |= 0x8000  \r\n");
+    wiz_mdio_write(PHYRAR_BMCR, wiz_mdio_read(PHYRAR_BMCR) | BMCR_RST);
+    // setPHYCR1(getPHYCR1() | 0x01);
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);   
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+
+    setPHYCR1(getPHYCR1() | 0x01);
+    printf("setPHYCR1(getPHYCR1() | 0x01)\r\n") ;
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+    HAL_Delay(1000);
+    printf("wait 1 sec \r\n");
+    printf( "after  value = 0x%04x \r\n",wiz_mdio_read(PHYRAR_BMCR));
+
+
+
+    PRINT_RESULT(SUCCESS);
+}
+void ES_PHY_SW_RESET_TEST2(void){   //Phy SW Reset 
+    PRINT_TEST_NAME();
+    uint8_t result ; 
+    printf_RED("TODO: need improve....\r\n");
+    printf_RED("data was not changed\r\n");
+
+    printf("\t\tbefore ");
+    phy_mode_check(getPHYSR());
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    ES_PHY_MDIO_READ_TEST(0x0001) ;
+    setPHYCR0(PHYMODE_10_FDX);     
+    printf("\t\tafter ");
+    phy_mode_check(getPHYSR());
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    ES_PHY_MDIO_READ_TEST(0x0001) ;
+    // // setPHYCR0(PHYMODE_AUTO);    
+    // printf("\t\tafter ");
+    // phy_mode_check(getPHYSR());
+    // ES_PHY_MDIO_READ_TEST(0x0000) ;
+    // ES_PHY_MDIO_READ_TEST(0x0001) ;
+
+    while(getCHPLCKR()){
+        Chip_unlock();
+        printf("LOCK status  = 0x%02X\r\n", getCHPLCKR());
+        HAL_Delay(10);
+    }
+
+     setPHYCR1(getPHYCR1() | 0x01);
+    //wiz_mdio_write(PHYRAR_BMCR, wiz_mdio_read(PHYRAR_BMCR) | BMCR_RST);
+    // wiz_mdio_write(PHYRAR_BMCR, wiz_mdio_read(PHYRAR_BMCR) | );
+
     printf("\t\t----reset  \r\n");
 
     ES_PHY_MDIO_READ_TEST(0x0000) ;
-    ES_PHY_MDIO_READ_TEST(0x0001) ;
+    HAL_Delay(1000);
+    printf("\t\t----reset_delay\r\n");
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
 
+    HAL_Delay(1000);
+    // printf("SYSR1 = 0x%02X\r\n", getSYSR());
+    // while((getPHYSR() & 0x01)==0 ){
+    //     HAL_Delay(1000);
+        ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+        ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+        ES_PHY_MDIO_READ_TEST(0x0000) ;
+        // printf("PHYSR = 0x%02X\r\n", getPHYSR() );
+        ES_PHY_MDIO_READ_TEST(0x0000) ;
+    setPHYCR0(PHYMODE_100_FDX);  
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+     setPHYCR1(getPHYCR1() | 0x01);
+    //   wiz_mdio_write(PHYRAR_BMCR, wiz_mdio_read(PHYRAR_BMCR) | BMCR_RST);
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(1000);
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
 
-    printf("SYCR1 = 0x%02X\r\n", getSYSR());
-     HAL_Delay(1000);
-    while(getPHYSR() & 0x01 ){
-        HAL_Delay(1000);
-        printf("SYCR1 = 0x%02X\r\n", getSYSR());
-    }
+    // }
+
+    ES_SW_Reset();
+    // ES_HW_Reset();
+    printf("SW-RESET\r\n");
     HAL_Delay(200);
+
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+
+    HAL_Delay(200);
+
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    HAL_Delay(200);
+
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    // }
+
+    ES_HW_Reset();
+    printf("HW-RESET\r\n");
+    HAL_Delay(200);   
+     HAL_Delay(200);
+
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+
+        HAL_Delay(200);
+
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+        HAL_Delay(200);
+
+    ES_PHY_MDIO_READ_TEST(0x0000) ;
+    // }
+
 
     uint8_t phy_mode =  phy_mode_check(getPHYSR());
     
@@ -524,13 +955,62 @@ void ES_PHY_SW_RESET(void){   //Phy SW Reset
 }
 
 
+void ES_PHY_SW_RESET(void){   //Phy HW Reset - TODO Define 
+    PRINT_TEST_NAME();
+    uint8_t result ; 
+    uint32_t cnt = 0; 
+    printf_RED("TODO: will be improve Funtion... \r\n");
+
+    while((getPHYSR() & 0x01) == PHY_LINK_OFF){
+        HAL_Delay(100);
+    }
+    
+    chip_hw_reset();
+
+    while((getPHYSR() & 0x01) == PHY_LINK_OFF){
+        HAL_Delay(50);
+        //printf("link off\r\n");          
+        cnt ++;
+    }
+
+    if (result>0){
+        result = SUCCESS;
+    }
+    PRINT_RESULT(result);
+}
+
+
 void ES_PHY_HW_RESET(void){   //Phy HW Reset - TODO Define 
-    printf_RED("==========PHY reset-- TODO Define==========  \r\n");
-    // HAL_GPIO_WritePin(RSTn_GPIO_Port, RSTn_Pin, GPIO_PIN_RESET);
-    // HAL_Delay(500);
-    // HAL_GPIO_WritePin(RSTn_GPIO_Port, RSTn_Pin, GPIO_PIN_SET);
-    // HAL_Delay(500);
-    printf("PHY reset complete!\r\n");
+    PRINT_TEST_NAME();
+    uint8_t result ; 
+    uint32_t cnt = 0; 
+    printf_RED("TODO: will be improve Funtion... \r\n");
+
+    while((getPHYSR() & 0x01) == PHY_LINK_OFF){
+        HAL_Delay(100);
+    }
+    
+    chip_hw_reset();
+    uint16_t value_0000 =  ES_PHY_MDIO_READ_TEST(0x0000);
+    uint16_t value_0001 =  ES_PHY_MDIO_READ_TEST(0x0001);
+
+    while((getPHYSR() & 0x01) == PHY_LINK_OFF){
+        HAL_Delay(1000);
+        cnt ++;
+        if (cnt > 5){
+            printf_RED("PHY Link Off, Please Check the RJ45\r\n");
+            PRINT_RESULT(FAIL);
+            break;
+        }
+    }
+
+    if (value_0000 == 0x3100 && value_0001 == 0x7809){
+        result = SUCCESS; 
+    }
+    else{
+        result = FAIL; 
+    }
+    PRINT_RESULT(result);
 }
 
 void ES_SET_PHY_POWER_DOWN(uint8_t data){   //Phy Power Down
@@ -557,7 +1037,7 @@ void ES_SET_PHY_POWER_DOWN(uint8_t data){   //Phy Power Down
         printf("Power Down Mode \r\n");
     }
     else{
-        printf("PHY Normal Mode \r\n ");
+        printf("PHY Normal Mode \r\n");
     }
     
     
@@ -582,23 +1062,21 @@ void ES_GET_PHY_POWER_DOWN(void){   //Phy Power Down
 }
 
 
-void ES_PHY_MDIO_READ_TEST(uint16_t addr ){
- //TODO: 
-    // PRINT_TEST_NAME();
+uint16_t ES_PHY_MDIO_READ_TEST(uint16_t addr ){
     setPHYRAR(addr);
     setPHYACR(0x02); // set phy control Register
     while( getPHYACR() != 0 ){
       HAL_Delay(50);      
     }
     uint16_t test = getPHYDOR(); 
-    printf ("\t\tMDIO_VALUE [%04x]= %04x \r\n ",addr , test) ; 
+    printf ("\t\tRead_value[0x%04x]= 0x%04x \r\n",addr , test) ; 
 
     if(addr == 0x16){
         if (test != 0x4706){
             printf("\t\t!!\033[0;31m PHY register [0x0016]Value is 0x4706 != [%02x]!! \033[0m\r\n", test );
         }
     }
-
+    return test ;
 }
 
 void ES_PHY_CMD_READ_TEST(uint16_t addr){
@@ -610,7 +1088,7 @@ void ES_PHY_CMD_READ_TEST(uint16_t addr){
       HAL_Delay(50);      
     }
     uint16_t test = getPHYDOR(); 
-    printf ("MDIO_VALUE = %04x \r\n ", test) ; 
+    printf ("MDIO_VALUE = %04x \r\n", test) ; 
 
 
 }
@@ -680,7 +1158,7 @@ void set_phy_loopback_mode_MDIO (void){
 
     printf ("\t\t-getPHYCR1= %04x \r\n" ,  getPHYCR1());
     printf("\t\t-wiz_mdio_read(0x0000)=%04x \r\n" ,wiz_mdio_read(0x0000));
-    wiz_mdio_write(0x0000, (wiz_mdio_read(0x0000) | 0x4000));
+    wiz_mdio_write(0x0000, 0x6100);
 
     printf("\t\t------------after--------------------\r\n");
 
@@ -693,15 +1171,22 @@ void set_phy_loopback_mode_MDIO (void){
 void set_phy_loopback_mode_CMD (void){
     PRINT_TEST_NAME();
     
-    
     printf ("\t\t-getPHYCR1= %04x \r\n" ,  getPHYCR1());
     printf("\t\t -wiz_mdio_read(0x0000)=%04x \r\n" ,wiz_mdio_read(0x0000));
-    wiz_mdio_write(0x0000, wiz_mdio_read(0x0000)  & ~0x4000);
+    setPHYCR1(getPHYCR1() | 0x10);
+    // wiz_mdio_write(0x0000, wiz_mdio_read(0x0000)  & ~0x4000);
+    HAL_Delay(2000);
 
     printf("\t\t------------after--------------------\r\n");
-
     printf ("\t\t-getPHYCR1= %04x \r\n" ,  getPHYCR1());
     printf("\t\t -wiz_mdio_read(0x0000)=%04x \r\n" ,wiz_mdio_read(0x0000));
+    setPHYCR1(getPHYCR1() | 0x01);
+    
+    HAL_Delay(2000);
+    printf("\t\t------------after--------------------\r\n");
+    printf ("\t\t-getPHYCR1= %04x \r\n" ,  getPHYCR1());
+    printf("\t\t -wiz_mdio_read(0x0000)=%04x \r\n" ,wiz_mdio_read(0x0000));
+
 }
 
 
@@ -739,12 +1224,13 @@ void ES_PING_TEST(uint8_t cnt) {
 
 
 void ESTEST(void) {
-    printf("===================================\r\n");
-    printf("==========ES_TEST_start============\r\n");
-    printf("===================================\r\n");
+    printf_GREEN("\r\n===================================\r\n");
+    printf_GREEN("==========ES_TEST_start============\r\n");
+    printf_GREEN("===================================\r\n");
 
+    printf("\r\n===================================\r\n");
     printf("========Chip Initial start==========\r\n");
-
+    printf("===================================\r\n\n");
 
   
 
@@ -754,21 +1240,20 @@ void ESTEST(void) {
     // ES_Set_Clk_25Mhz();
     // ES_Set_Clk_100Mhz();
 
-    printf("===================================\r\n");
+    printf("\r\n===================================\r\n");
     printf("=======Host Interface start======\r\n");
+    printf("===================================\r\n\n");
 
-    /*TODO :: how to verify???*/
-    // ES_common_register_0x0000_read();
-    // ES_common_register_0x0002_read();
-    // ES_common_register_0x2000_read(); //0x01이 반환되는게 맞나??? 맞지 -> 맞음
+
+
     ES_TEST_common_register_read() ;
 
-    #if 0
-        ES_TEST_BUFFER_TEST(0xfff - 1);
+    #if 1
+        ES_TEST_BUFFER_TEST(0x7FFF - 1);
     #endif 
-
-    printf("===================================\r\n");
+    printf("\r\n===================================\r\n");
     printf("========= Internel Phy  start======\r\n");
+    printf("===================================\r\n\n");
 
     /* power down Mode and Reset TEST*/
     
@@ -779,30 +1264,46 @@ void ESTEST(void) {
     ES_PHY_MDIO_READ_TEST(0x0001);
     ES_PHY_MDIO_READ_TEST(0x0016);
 
-    ES_SET_PHY_MODE(PHYMODE_10_FDX);
-    //ES_SET_PHY_MODE(PHYMODE_100_HDX);
+    //ES_SET_PHY_MODE(PHYMODE_10_FDX);
+    ES_SET_PHY_MODE(PHYMODE_100_HDX);
     ES_SET_PHY_POWER_DOWN(PHY_POWER_DOWN);
     ES_SET_PHY_POWER_DOWN(PHY_POWER_NORM);
 
-    ES_PHY_MDIO_READ_TEST(0x0000);
-    ES_PHY_MDIO_READ_TEST(0x0001);
-    ES_PHY_MDIO_READ_TEST(0x0016);
+    // ES_PHY_MDIO_READ_TEST(0x0000);
+    // ES_PHY_MDIO_READ_TEST(0x0001);
+    // ES_PHY_MDIO_READ_TEST(0x0016);
 
     /*TODO: need improve->data was not changed*/
+    ES_PHY_HW_RESET();
     ES_PHY_SW_RESET(); //TODO :이거 값의 변화가 없는데, MDIO로 값을 읽어와서 실제로 그러한지 확인해보기.
 
     ES_GET_PHY_MODE(); 
     ES_GET_PHY_POWER_DOWN(); 
 
-    ES_PHY_MDIO_READ_TEST(0x0000);
-    ES_PHY_MDIO_READ_TEST(0x0001);
-    ES_PHY_MDIO_READ_TEST(0x0016);
+    // set_phy_loopback_mode_MDIO();
+    // set_phy_loopback_mode_CMD();
+
+
+    // ES_PHY_MDIO_READ_TEST(0x0000);
+    // ES_PHY_MDIO_READ_TEST(0x0001);
+    // ES_PHY_MDIO_READ_TEST(0x0016);
 /////////////////////////
 
 
 
 }
 void ES_NET_TEST(void){
-    ES_PING_TEST(10);
+    printf("\r\n===================================\r\n");
+    printf(    "========= Network TEST start=======\r\n");
+    printf(    "===================================\r\n\n");
 
+
+    ES_PING_TEST(10);
+    
+
+
+
+    printf_GREEN("\r\n===================================\r\n");
+    printf_GREEN(    "=========== ES TEST finish=========\r\n");
+    printf_GREEN(    "===================================\r\n\n");
 }

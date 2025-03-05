@@ -171,6 +171,112 @@ uint8_t is_testing = 0; // 0 : not testing, 1 : testing
   * @retval int
   */
 
+#define socket_0 0
+#define socket_0_port 5000
+#define socket_1 1
+#define socket_1_port 5001
+
+void ES_loopback(void){
+  PRINT_TEST_NAME();
+    uint8_t result ; 
+    int32_t ret;
+    uint16_t sentsize=0;
+    int8_t status0,inter;
+    int8_t status1;
+    uint8_t tmp = 0;
+    uint16_t received_size;
+    uint8_t arg_tmp8;
+    uint8_t* mode_msg;
+
+
+    uint8_t socket0_temp = 0;
+    uint8_t socket1_temp = 0;   
+    uint8_t pingSourceIP[4] ;
+    getSIPR(pingSourceIP);
+
+    set_phy_loopback_mode_MDIO();
+ 
+
+
+    getsockopt(socket_0, SO_STATUS, &status0);
+    getsockopt(socket_1, SO_STATUS, &status1);
+  
+    while(status0 != SOCK_CLOSED) { HAL_Delay(100);}
+    while(status1 != SOCK_CLOSED) { HAL_Delay(100);}
+
+    socket0_temp = socket(socket_0, Sn_MR_TCP4, socket_0_port, 0);
+    socket1_temp = socket(socket_1, Sn_MR_TCP4, socket_1_port, 0);
+
+  
+    while(status0 != SOCK_INIT) { HAL_Delay(100);getsockopt(socket_0, SO_STATUS, &status0);}
+    while(status1 != SOCK_INIT) { HAL_Delay(100);getsockopt(socket_1, SO_STATUS, &status1);}
+
+    printf("success = socket\r\n");
+
+    getsockopt(socket_0, SO_STATUS, &status0);
+    getsockopt(socket_1, SO_STATUS, &status1);
+    printf("sock_stat = %d / %d \r\n" , status0,status1); 
+
+    if( (ret = listen(socket_0)) != SOCK_OK) return ret;
+
+    printf("\t\t%d:Listen, TCP server loopback, port [%d] \r\n", socket_0, socket_0_port);
+    
+   
+    while(status0 != SOCK_LISTEN) { 
+      HAL_Delay(100);
+      getsockopt(socket_0, SO_STATUS, &status0);
+      
+    }
+        
+    // HAL_Delay(1000);s
+    //   /* for debug*/
+    //     getsockopt(socket_0, SO_STATUS, &status0);
+    //     if (status0 == SOCK_LISTEN){
+    //       printf("connect_sock_stat = SOCK_LISTEN \r\n"); 
+    //     }else{
+    //       printf("connect_sock_stat = %d \r\n" ,status0); 
+    //     }
+
+    uint8_t destip[4] ={ 192,168,11,44} ;
+    while( status1 != SOCK_ESTABLISHED ){
+      getsockopt(socket_0, SO_STATUS, &status0);
+      getsockopt(socket_1, SO_STATUS, &status1);
+      printf("sock_stat = %d / %d \r\n" , status0,status1); 
+
+      ES_PHY_MDIO_READ_TEST(0x0000) ; 
+      if (status1 == SOCK_CLOSED ){
+         socket(socket_1, Sn_MR_TCP4, socket_1_port, 0);
+      }else if (status1 == SOCK_INIT ) {
+        printf("%d:Try to connect to the %d.%d.%d.%d, %d\r\n", socket_1, destip[0], destip[1], destip[2], destip[3], socket_0_port);
+        ret = connect(socket_1, destip, socket_0_port, 4);
+        printf("connect RESULT =  %d \r\n" , ret);
+      }
+    
+      HAL_Delay(1000) ; 
+    }
+
+    HAL_Delay(100);
+    getsockopt(socket_0, SO_STATUS, &status0);
+    getsockopt(socket_1, SO_STATUS, &status1);
+    printf("sock_stat = %d / %d \r\n" , status0,status1); 
+    HAL_Delay(100);
+
+    while(status1 != SOCK_ESTABLISHED){
+       HAL_Delay(100);
+    }
+      printf("success = SOCK_ESTABLISHED \r\n");
+    PRINT_RESULT(SUCCESS) ; 
+
+}
+
+      printf(" %c " , recieve_buf[i]);
+    }
+    printf("\r\n" );
+    PRINT_RESULT(SUCCESS) ; 
+}
+
+
+
 int main(void)
 {
 
@@ -268,9 +374,13 @@ int main(void)
   ES_NET_TEST();
 
 
- set_phy_loopback_mode_MDIO();
-  ES_loopback_udp();
-  // ES_NET_TEST();
+  chip_hw_reset();
+  W6300Initialze();
+  ctlnetwork(CN_SET_NETINFO, &gWIZNETINFO);
+  set_loopback_mode_W6x00(AS_IPV4);
+  #if 0 
+  ES_loopback();
+  #endif 
 
   while (1)
   {

@@ -12,8 +12,8 @@ extern "C"
 
 
 #define PRINT_TEST_NAME() printf("========== test = [%s] ==========\r\n" ,__func__)
-#define PRINT_TEST_RESULT_SUCCESSE() printf("\033[0;32m\t\t\t\t -> [%s] test result = Success ==========\033[0m\r\n" ,__func__)
-#define PRINT_TEST_RESULT_FAIL() printf("\033[0;31m\t\t\t\t -> [%s] test result = Fail-- ==========\033[0m\r\n" ,__func__)
+#define PRINT_TEST_RESULT_SUCCESSE() printf("\033[0;32m\t\t\t\t -> [%s] test result = Success \033[0m\r\n" ,__func__)
+#define PRINT_TEST_RESULT_FAIL() printf("\033[0;31m\t\t\t\t -> [%s] test result = Fail \033[0m\r\n" ,__func__)
 
 #define SUCCESS 0 
 #define FAIL    1  
@@ -44,6 +44,8 @@ void ES_Set_Clk_100Mhz(void);
 
 uint8_t register_read_compare(uint16_t addr , uint16_t value );
 void ES_common_register_write(uint16_t addr, uint8_t *data, uint8_t len);
+
+uint16_t ES_PHY_MDIO_READ_TEST(uint16_t addr );
 void ESTEST(void) ;
 #ifdef __cplusplus
 }

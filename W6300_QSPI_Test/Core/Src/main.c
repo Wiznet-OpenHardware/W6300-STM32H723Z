@@ -176,6 +176,90 @@ uint8_t is_testing = 0; // 0 : not testing, 1 : testing
 #define socket_1 1
 #define socket_1_port 5001
 
+#include "stm32h7xx_hal_flash.h"
+#include "stm32h7xx_hal_flash_ex.h"
+// #include "stm32_hal_legacy.h"
+static void read_IP_info_to_flash(uint8_t *IPaddres,uint32_t offset);
+static void Write_IP_info_to_flash(uint8_t *IPaddres ,uint32_t offset);
+
+
+static void Write_IP_info_to_flash (uint8_t *IPaddres ,uint32_t offset)
+{
+    // Bank1의 시작 주소 0x08000000에서 200KB(0x32000)를 더한 주소
+    uint32_t writeAddress = 0x08020000 + (offset * 0x00020000);
+
+    // Flash Unlock (쓰기 전 잠금 해제)
+    HAL_FLASH_Unlock();
+
+    // 1) 섹터 Erase
+    // 0x08032000는 Sector 1에 속한다고 가정 (섹터 크기가 128KB라면,
+    // Sector 0: 0x08000000 ~ 0x0801FFFF, Sector 1: 0x08020000 ~ 0x0803FFFF)
+    FLASH_EraseInitTypeDef eraseInit;
+    uint32_t sectorError = 0;
+
+    eraseInit.TypeErase    = FLASH_TYPEERASE_SECTORS;
+    eraseInit.Banks        = FLASH_BANK_1;         // Bank1 사용
+    eraseInit.Sector       = 1 + offset;                    // Sector 1 (주소 범위 0x08020000 ~ 0x0803FFFF)
+    eraseInit.NbSectors    = 1 + offset;
+    eraseInit.VoltageRange = FLASH_VOLTAGE_RANGE_4;  // STM32H7는 RANGE_4 사용
+
+    if (HAL_FLASHEx_Erase(&eraseInit, &sectorError) != HAL_OK)
+    {
+        printf("HAL_FLASHEx_Erase Error, SectorError = 0x%08lx\r\n", (unsigned long)sectorError);
+        HAL_FLASH_Lock();
+        return;
+    }
+
+    // 2) 32바이트 데이터 버퍼 준비 (FLASH_TYPEPROGRAM_FLASHWORD는 256비트, 즉 32바이트 단위)
+    uint8_t myData[32];
+    memset(myData, 0xFF, sizeof(myData));  // Erase된 상태는 모두 0xFF
+   
+    myData[0] = *(uint8_t*)(IPaddres);
+    myData[1] = *(uint8_t*)(IPaddres+1);
+    myData[2] = *(uint8_t*)(IPaddres+2);
+    myData[3] = *(uint8_t*)(IPaddres+3);
+ 
+    // 3) FLASH 프로그래밍: 32바이트 단위로 기록
+    // 세 번째 인자는 데이터 버퍼의 시작 주소여야 합니다.
+    if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_FLASHWORD, writeAddress, (uint32_t)myData) != HAL_OK)
+    {
+        uint32_t flashError = HAL_FLASH_GetError();
+        printf("HAL_FLASH_Program Error, error code: 0x%08lx\r\n", (unsigned long)flashError);
+        HAL_FLASH_Lock();
+        return;
+    }
+
+    // 4) Flash Lock (쓰기 완료 후 잠금)
+
+}
+
+
+
+static void read_IP_info_to_flash(uint8_t *IPaddres,uint32_t offset)
+{
+    // Bank1의 시작 주소 0x08000000에서 200KB(0x32000)를 더한 주소
+    // 0x08000000 + 0x32000 = 0x08032000
+
+    uint32_t ReadAddress = 0x08020000 + (offset * 0x00020000);
+
+    HAL_FLASH_Unlock();
+    uint32_t readValue = *(uint32_t*)(ReadAddress);
+    HAL_FLASH_Lock();
+
+    uint8_t myData[4];
+    myData[0] = (uint8_t)(readValue & 0xFF);
+    myData[1] = (uint8_t)((readValue >> 8) & 0xFF);
+    myData[2] = (uint8_t)((readValue >> 16) & 0xFF);
+    myData[3] = (uint8_t)((readValue >> 24) & 0xFF);
+
+    *IPaddres     = (uint8_t)(readValue & 0xFF);
+    *(IPaddres+1) = (uint8_t)((readValue >> 8) & 0xFF);
+    *(IPaddres+2) = (uint8_t)((readValue >> 16) & 0xFF);
+    *(IPaddres+3) = (uint8_t)((readValue >> 24) & 0xFF);
+}
+
+
+
 void ES_loopback(void){
   PRINT_TEST_NAME();
     uint8_t result ; 
@@ -269,6 +353,62 @@ void ES_loopback(void){
 
 }
 
+void ES_loopback_udp(void){
+  PRINT_TEST_NAME();
+    uint8_t result ; 
+    int32_t ret;
+    uint16_t sentsize=0;
+    int8_t status0,inter;
+    int8_t status1;
+    uint8_t tmp = 0;
+    uint16_t received_size;
+    uint8_t arg_tmp8;
+    uint8_t* mode_msg;
+
+
+    uint8_t socket0_temp = 0;
+    uint8_t socket1_temp = 0;   
+    uint8_t pingSourceIP[4] = {255,255,255,255} ;
+    getSIPR(pingSourceIP);
+
+    // set_phy_loopback_mode_MDIO();
+ 
+    getsockopt(socket_0, SO_STATUS, &status0);
+    getsockopt(socket_1, SO_STATUS, &status1);
+  
+    while(status0 != SOCK_CLOSED) { HAL_Delay(100);}
+    while(status1 != SOCK_CLOSED) { HAL_Delay(100);}
+
+    if((socket0_temp = socket(socket_0, Sn_MR_UDP, socket_0_port, 0x00)) == socket_0){
+      printf("[iOLB5]%d:_Opened, UDP loopback, port [%d]\r\n", socket_0, socket_0_port);
+    }
+
+    if((socket1_temp = socket(socket_1, Sn_MR_UDP, socket_1_port, 0x00)) == socket_1){
+      printf("[iOLB5]%d:_Opened, UDP loopback, port [%d]\r\n", socket_1, socket_1_port);
+    }
+
+    HAL_Delay(100);
+    getsockopt(socket_0, SO_STATUS, &status0);
+    getsockopt(socket_1, SO_STATUS, &status1);
+    printf("sock_stat = %d / %d \r\n" , status0,status1); 
+    HAL_Delay(100);
+    while(status0 != SOCK_UDP) { HAL_Delay(100);}
+    while(status1 != SOCK_UDP) { HAL_Delay(100);}
+
+    uint8_t* send_buf = "hello_world";
+    uint8_t* recieve_buf = "hello_world";
+ 
+    ret = sendto(socket_1, send_buf, 6, pingSourceIP, socket_0,4);
+    if(ret < 0)
+    {
+      printf("sendto = %d \r\n", ret ) ;
+    }
+    uint8_t size = getSn_RX_RSR(socket_0);
+    printf("size = %d \r\n", size ) ; 
+
+    recvfrom(socket_0, recieve_buf, size, pingSourceIP, socket_1,4);
+
+    for ( int i = 0; i < size ; i++ ){
       printf(" %c " , recieve_buf[i]);
     }
     printf("\r\n" );
@@ -276,6 +416,56 @@ void ES_loopback(void){
 }
 
 
+int GetIPAddress(uint8_t *ip )
+{
+    char line[100];
+    int value;
+    int count = 0;
+    
+    for (int i = 0; i < 4; i++) {
+        printf("Enter IP  %d (or press ENTER to stop): ", i + 1);
+        
+        // 한 줄 전체 입력 (엔터까지)
+        if (fgets(line, sizeof(line), stdin) == NULL) {
+            break;  // 입력 오류
+        }
+        // 개행문자 제거
+        size_t len = strlen(line);
+        if (len > 0 && line[len - 1] == '\n') {
+            line[len - 1] = '\0';
+        }
+        // 빈 줄이면 입력 중단
+        if (line[0] == '\0') {
+            break;
+        }
+        // 문자열을 정수로 변환 (숫자 입력)
+        if (sscanf(line, "%d", &value) != 1) {
+            break;
+        }
+        ip[i] = (uint8_t)value;
+        count++;
+    }
+    // 네 번 모두 성공적으로 입력받으면 성공 플래그 1, 아니면 0 반환
+    return (count == 4) ? 1 : 0;
+}
+
+void ES_LOOPBACK_TEST(void){
+  PRINT_TEST_NAME();
+  int retval ; 
+  while (1)
+  {
+    if ((retval = loopback_tcpc(SOCKET, g_udp_buf_main, WIZ_Dest_IP, 5010)) < 0)
+    {
+      if (retval == -999){
+        PRINT_RESULT(SUCCESS);
+        return SUCCESS;
+      }
+      printf(" loopback_udps error : %d\n", retval);
+      while (1)
+          ;
+    }
+  }
+}
 
 int main(void)
 {
@@ -311,6 +501,57 @@ int main(void)
   //MX_FMC_Init();
   MX_USART2_UART_Init();
   MX_SPI2_Init();
+
+  setvbuf(stdout, NULL, _IONBF, 0);
+  uint32_t value = 0;
+
+  if ( HAL_GPIO_ReadPin(MOD0_GPIO_Port, MOD0_Pin) &&
+        HAL_GPIO_ReadPin(MOD1_GPIO_Port, MOD1_Pin) &&
+        HAL_GPIO_ReadPin(MOD2_GPIO_Port, MOD2_Pin) &&
+        HAL_GPIO_ReadPin(MOD3_GPIO_Port, MOD3_Pin))
+    {
+    printf( " mode pin = 0xff \r\n" ); 
+
+    printf_RED("--> IP Info Change Mode\r\n");
+
+    uint8_t inNum; 
+    uint8_t inputIP[4] ; 
+    printf_GREEN("W6300 IP input\r\n" );
+    if(GetIPAddress(gWIZNETINFO.ip) == 1){
+      printf("You entered: %d.%d.%d.%d \r\n", gWIZNETINFO.ip[0] ,gWIZNETINFO.ip[1] ,gWIZNETINFO.ip[2] ,gWIZNETINFO.ip[3] );
+    }else{
+      printf("get ip--- fail\r\n");
+    }
+    Write_IP_info_to_flash(gWIZNETINFO.ip, 0 );
+
+    printf_GREEN("Dest IP input\r\n" );
+    if(GetIPAddress(WIZ_Dest_IP) == 1){
+      printf("You entered: %d.%d.%d.%d \r\n", WIZ_Dest_IP[0] ,WIZ_Dest_IP[1] ,WIZ_Dest_IP[2] ,WIZ_Dest_IP[3] );
+    }else{
+      printf("get ip--- fail\r\n");
+    }
+    Write_IP_info_to_flash(WIZ_Dest_IP, 1 );
+
+    read_IP_info_to_flash(gWIZNETINFO.ip,0);
+    printf("read [W6300] IP: %03d.%03d.%03d.%03d \r\n", gWIZNETINFO.ip[0] ,gWIZNETINFO.ip[1] ,gWIZNETINFO.ip[2] ,gWIZNETINFO.ip[3] );
+    read_IP_info_to_flash(WIZ_Dest_IP,1);
+    printf("read [Dest ] IP: %03d.%03d.%03d.%03d \r\n", WIZ_Dest_IP[0] ,WIZ_Dest_IP[1] ,WIZ_Dest_IP[2] ,WIZ_Dest_IP[3] );
+
+    while(1){
+      HAL_Delay(2500);
+      printf_GREEN("please change the switch mod[0:3] and reset\r\n");
+    }
+
+  }else{
+    printf( " mode pin = %d \r\n" ,HAL_GPIO_ReadPin(MOD0_GPIO_Port, MOD0_Pin) | HAL_GPIO_ReadPin(MOD1_GPIO_Port, MOD1_Pin)| 
+                                    HAL_GPIO_ReadPin(MOD2_GPIO_Port, MOD2_Pin) |HAL_GPIO_ReadPin(MOD3_GPIO_Port, MOD3_Pin)); 
+
+    read_IP_info_to_flash(gWIZNETINFO.ip,0);
+    printf("read [W6300] IP: %03d.%03d.%03d.%03d \r\n", gWIZNETINFO.ip[0] ,gWIZNETINFO.ip[1] ,gWIZNETINFO.ip[2] ,gWIZNETINFO.ip[3] );
+    read_IP_info_to_flash(WIZ_Dest_IP,1);
+    printf("read [Dest ] IP: %03d.%03d.%03d.%03d \r\n", WIZ_Dest_IP[0] ,WIZ_Dest_IP[1] ,WIZ_Dest_IP[2] ,WIZ_Dest_IP[3] );
+  }
+  
 
   printf("W6300 test Program V%04d \r\n", RTLVERSiON);
   printf("Compile %s - %s \r\n", __DATE__, __TIME__);
@@ -371,25 +612,19 @@ int main(void)
     printf("%d : max size = %d k \r\n", i, getSn_TxMAX(i));
   }
   print_network_information();
-  ES_NET_TEST();
+  ES_NET_PING_TEST( WIZ_Dest_IP);
 
 
   chip_hw_reset();
   W6300Initialze();
   ctlnetwork(CN_SET_NETINFO, &gWIZNETINFO);
-  set_loopback_mode_W6x00(AS_IPV4);
-  #if 0 
-  ES_loopback();
-  #endif 
+
+
+  ES_NET_LOOPBACK_TEST( WIZ_Dest_IP);
 
   while (1)
   {
-    if ((retval = loopback_tcps(SOCKET, g_udp_buf_main, 5000)) < 0)
-    {
-      printf(" loopback_udps error : %d\n", retval);
-      while (1)
-          ;
-    }
+    /* code */
   }
 #endif 
 
@@ -491,6 +726,32 @@ int _write(int fd, char *str, int len)
   }
   return len; //
 }
+
+#ifndef STDIN_FILENO
+#define STDIN_FILENO  0
+#endif
+
+#ifndef STDOUT_FILENO
+#define STDOUT_FILENO 1
+#endif
+
+#ifndef STDERR_FILENO
+#define STDERR_FILENO 2
+#endif
+// _read() 함수 재정의
+int _read(int file, char *ptr, int len)
+{
+    // scanf가 호출될 때 _read가 불려서 문자를 받게 됨
+    if(file == STDIN_FILENO)
+    {
+        // 여기서는 간단히 1바이트씩 블로킹으로 수신한다고 가정
+        HAL_StatusTypeDef status = HAL_UART_Receive(&huart2, (uint8_t *)ptr, 1, HAL_MAX_DELAY);
+        if(status == HAL_OK) return 1; // 1바이트 읽었다고 알려줌
+        else                 return 0; // 실패 시 0
+    }
+    return 0;
+}
+
 
 /**
   * @brief System Clock Configuration

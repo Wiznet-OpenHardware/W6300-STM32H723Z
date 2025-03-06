@@ -12,19 +12,23 @@
  */
 #include "wizchip_conf.h"
 #include "chip_init_TEST.h"
-
+#include "wizchip_conf.h"
+#include "socket.h"
 /**
  * ----------------------------------------------------------------------------------------------------
  * Macros
  * ----------------------------------------------------------------------------------------------------
  */
 
+	#define DATA_BUF_SIZE			2048
 
 /**
  * ----------------------------------------------------------------------------------------------------
  * Variables
  * ----------------------------------------------------------------------------------------------------
  */
+static uint8_t sock_state[8] = {0,};
+static uint16_t any_port = 	50000;
 /**
  * ----------------------------------------------------------------------------------------------------
  *  common Functions
@@ -320,7 +324,7 @@ uint8_t ES_TEST_BUFFER_TEST(uint32_t len_max){
                 PRINT_RESULT(result); 
                // return result ; 
             }
-            HAL_Delay (100);
+            HAL_Delay (10);
         }
     }
     printf("\r\n") ; 
@@ -347,7 +351,7 @@ uint8_t ES_TEST_BUFFER_TEST(uint32_t len_max){
                 PRINT_RESULT(result); 
                // return result ; 
             }
-            HAL_Delay (100);
+            HAL_Delay (10);
         }
     }
     printf("\r\n") ; 
@@ -1101,12 +1105,12 @@ void ES_PHY_CMD_READ_TEST(uint16_t addr){
  */
 
 
-uint8_t Ping(){
+uint8_t Ping(uint8_t *dest_ip){
     uint8_t result ; 
 
     uint8_t pingDestIP[4]= {192 , 168 , 11 , 2};
     setPINGIDR(0x6300); // Ping ID
-    setSLDIPR(pingDestIP); //Set destnation IP
+    setSLDIPR(dest_ip); //Set destnation IP
     setPINGSEQR(getPINGSEQR() + 1); // Ping SEQR +1 
     while ((getSLIR()  & 0x80) == 1 )   //Wait for ping ready
     {
@@ -1175,20 +1179,241 @@ void set_phy_loopback_mode_CMD (void){
     printf("\t\t -wiz_mdio_read(0x0000)=%04x \r\n" ,wiz_mdio_read(0x0000));
     setPHYCR1(getPHYCR1() | 0x10);
     // wiz_mdio_write(0x0000, wiz_mdio_read(0x0000)  & ~0x4000);
-    HAL_Delay(2000);
+    HAL_Delay(200);
 
     printf("\t\t------------after--------------------\r\n");
     printf ("\t\t-getPHYCR1= %04x \r\n" ,  getPHYCR1());
     printf("\t\t -wiz_mdio_read(0x0000)=%04x \r\n" ,wiz_mdio_read(0x0000));
     setPHYCR1(getPHYCR1() | 0x01);
     
-    HAL_Delay(2000);
+    HAL_Delay(200);
     printf("\t\t------------after--------------------\r\n");
     printf ("\t\t-getPHYCR1= %04x \r\n" ,  getPHYCR1());
     printf("\t\t -wiz_mdio_read(0x0000)=%04x \r\n" ,wiz_mdio_read(0x0000));
-
 }
 
+int32_t ES_LOOPBACK_TEST_CLIENT(uint8_t sn, uint8_t* buf, uint8_t* destip, uint16_t destport)
+{
+    check_loopback_mode_W6x00();
+    uint8_t  loopback_mode = AS_IPV4; 
+    int32_t ret; // return value for SOCK_ERRORs
+    uint16_t sentsize=0;
+    uint8_t status,inter,addr_len;
+    uint16_t received_size;
+    uint8_t tmp = 0;
+    uint8_t arg_tmp8;
+    wiz_IPAddress destinfo;
+    uint8_t* TEST_buf = "hello!__I_am_W6300_Thank_you$0d$0a";
+    static uint8_t send_state = 0 ;
+    static uint8_t send_cnt = 0 ;
+
+#if 1
+	// 20231018 taylor
+	uint8_t sn_status;
+#endif
+
+    // Socket Status Transitions
+    // Check the W6100 Socket n status register (Sn_SR, The 'Sn_SR' controlled by Sn_CR command or Packet send/recv status)
+    getsockopt(sn,SO_STATUS,&status);
+    switch(status)
+    {
+    case SOCK_ESTABLISHED :
+        ctlsocket(sn,CS_GET_INTERRUPT,&inter);
+        if(inter & Sn_IR_CON)	// Socket n interrupt register mask; TCP CON interrupt = connection with peer is successful
+        {
+            arg_tmp8 = Sn_IR_CON;
+            ctlsocket(sn,CS_CLR_INTERRUPT,&arg_tmp8);// this interrupt should be write the bit cleared to '1'
+        }
+        //////////////////////////////////////////////////////////////////////////////////////////////
+        // Data Transaction Parts; Handle the [data receive and send] process
+        //////////////////////////////////////////////////////////////////////////////////////////////
+        getsockopt(sn, SO_RECVBUF, &received_size);
+        if(received_size == 0 && send_state == 0) // Sn_RX_RSR: Socket n Received Size Register, Receiving data length
+        {
+            ret = send(sn, TEST_buf, strlen(TEST_buf) - 10);
+            if(ret < 0) // Send Error occurred (sent data length < 0)
+            {
+                printf("close_%d \r\n",ret);
+                close(sn); // socket close
+                return ret;
+            }
+            send_state = 1; 
+            HAL_Delay(100);
+        }
+        else if(received_size != 0 ) // Sn_RX_RSR: Socket n Received Size Register, Receiving data length
+        {
+            printf("\t\t[%02d] loopback recieve\r\n", send_cnt);
+            
+            if(received_size > DATA_BUF_SIZE) received_size = DATA_BUF_SIZE; // DATA_BUF_SIZE means user defined buffer size (array)
+            ret = recv(sn, buf, received_size); // Data Receive process (H/W Rx socket buffer -> User's buffer)
+
+            if(ret <= 0) return ret; // If the received data length <= 0, receive failed and process end
+            received_size = (uint16_t) ret;
+            // Data sentsize control
+        }else if(received_size == 0 && send_state == 1 ) {
+            if (memcmp(TEST_buf ,buf , strlen(TEST_buf) - 10) == 0){
+                printf("\t\t[%02d] loopback OK\r\n", send_cnt);
+                send_state = 0; 
+                send_cnt++;
+            }else{
+                printf("send data = %s \r\n ",TEST_buf) ;  
+                printf("send data = %s \r\n ",buf) ;  
+                printf("\t\t[%02d] memcmp errror \r\n", send_cnt);
+                send_state = 0; 
+            }
+            if (send_cnt >=10 ){
+                return -999;
+            }
+            HAL_Delay(100);
+        }
+        //////////////////////////////////////////////////////////////////////////////////////////////
+        break;
+
+    case SOCK_CLOSE_WAIT :
+        #ifdef _LOOPBACK_DEBUG_
+            printf("%d:CloseWait\r\n",sn);
+        #endif
+        getsockopt(sn, SO_RECVBUF, &received_size);
+
+        if((received_size = getSn_RX_RSR(sn)) > 0) // Sn_RX_RSR: Socket n Received Size Register, Receiving data length
+        {
+            if(received_size > DATA_BUF_SIZE) received_size = DATA_BUF_SIZE; // DATA_BUF_SIZE means user defined buffer size (array)
+            ret = recv(sn, buf, received_size); // Data Receive process (H/W Rx socket buffer -> User's buffer)
+
+            if(ret <= 0) return ret; // If the received data length <= 0, receive failed and process end
+            received_size = (uint16_t) ret;
+            sentsize = 0;
+#if 1
+            // 20231018 taylor
+            #ifdef _LOOPBACK_DEBUG_
+			getsockopt(sn,SO_EXTSTATUS, &sn_status);
+			if(sn_status & TCPSOCK_MODE)
+			{
+				printf("Socket %d Received %d bytes from %02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x port %d : \r\n",
+											sn, received_size,
+											destip[0], destip[1], destip[2], destip[3],
+											destip[4], destip[5], destip[6], destip[7],
+											destip[8], destip[9], destip[10], destip[11],
+											destip[12], destip[13], destip[14], destip[15],
+											destport);
+			}
+			else
+			{
+				printf("Socket %d Received %d bytes from %d.%d.%d.%d port %d : \r\n", sn, received_size, destip[0], destip[1], destip[2], destip[3], destport);
+			}
+
+			int i;
+			for(i=0; i<received_size; i++)
+			{
+				printf("%c", buf[i]);
+			}
+			printf("\r\n");
+            #endif
+#endif
+
+            // Data sentsize control
+            while(received_size != sentsize)
+            {
+                ret = send(sn, buf+sentsize, received_size-sentsize); // Data send process (User's buffer -> Destination through H/W Tx socket buffer)
+                if(ret < 0) // Send Error occurred (sent data length < 0)
+                {
+                    close(sn); // socket close
+                    return ret;
+                }
+                sentsize += ret; // Don't care SOCKERR_BUSY, because it is zero.
+            }
+#if 1
+            // 20231018 taylor
+            #ifdef _LOOPBACK_DEBUG_
+			if(sn_status & TCPSOCK_MODE)
+			{
+				printf("Socket %d Sent back %d bytes from %02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x port %d : \r\n",
+											sn, sentsize,
+											destip[0], destip[1], destip[2], destip[3],
+											destip[4], destip[5], destip[6], destip[7],
+											destip[8], destip[9], destip[10], destip[11],
+											destip[12], destip[13], destip[14], destip[15],
+											destport);
+			}
+			else
+			{
+				printf("Socket %d Sent back %d bytes from %d.%d.%d.%d port %d : \r\n", sn, sentsize, destip[0], destip[1], destip[2], destip[3], destport);
+			}
+
+			int j;
+			for(j=0; j<sentsize; j++)
+			{
+				printf("%c", buf[j]);
+			}
+			printf("\r\n");
+            #endif
+#endif
+        }
+        if((ret=disconnect(sn)) != SOCK_OK) return ret;
+            #ifdef _LOOPBACK_DEBUG_
+                printf("%d:Socket Closed\r\n", sn);
+            #endif
+        break;
+
+    case SOCK_INIT :
+        #ifdef _LOOPBACK_DEBUG_
+            if(loopback_mode == AS_IPV4)
+                printf("%d:Try to connect to the %d.%d.%d.%d, %d\r\n", sn, destip[0], destip[1], destip[2], destip[3], destport);
+            else if(loopback_mode == AS_IPV6)
+            {
+                printf("%d:Try to connect to the %04X:%04X", sn, ((uint16_t)destip[0] << 8) | ((uint16_t)destip[1]),
+                    ((uint16_t)destip[2] << 8) | ((uint16_t)destip[3]));
+                printf(":%04X:%04X", ((uint16_t)destip[4] << 8) | ((uint16_t)destip[5]),
+                    ((uint16_t)destip[6] << 8) | ((uint16_t)destip[7]));
+                printf(":%04X:%04X", ((uint16_t)destip[8] << 8) | ((uint16_t)destip[9]),
+                    ((uint16_t)destip[10] << 8) | ((uint16_t)destip[11]));
+                printf(":%04X:%04X,", ((uint16_t)destip[12] << 8) | ((uint16_t)destip[13]),
+                    ((uint16_t)destip[14] << 8) | ((uint16_t)destip[15]));
+                printf("%d\r\n", destport);
+            }
+        #endif
+
+        if(loopback_mode == AS_IPV4)
+          ret = connect(sn, destip, destport, 4); /* Try to connect to TCP server(Socket, DestIP, DestPort) */
+        else if(loopback_mode == AS_IPV6)
+          ret = connect(sn, destip, destport, 16); /* Try to connect to TCP server(Socket, DestIP, DestPort) */
+
+        printf("SOCK Status: %d\r\n", ret);
+
+        if( ret != SOCK_OK) return ret;	//	Try to TCP connect to the TCP server (destination)
+        break;
+
+    case SOCK_CLOSED:
+        switch(loopback_mode)
+        {
+        case AS_IPV4:
+            tmp = socket(sn, Sn_MR_TCP4, any_port++, SOCK_IO_NONBLOCK);
+            break;
+        case AS_IPV6:
+            tmp = socket(sn, Sn_MR_TCP6, any_port++, SOCK_IO_NONBLOCK);
+            break;
+        case AS_IPDUAL:
+            tmp = socket(sn, Sn_MR_TCPD, any_port++, SOCK_IO_NONBLOCK);
+            break;
+        default:
+            break;
+        }
+
+        if(tmp != sn){    /* reinitialize the socket */
+            #ifdef _LOOPBACK_DEBUG_
+                printf("%d : Fail to create socket.\r\n",sn);
+            #endif
+            return SOCKERR_SOCKNUM;
+        }
+        printf("%d:Socket opened[%d]\r\n",sn, getSn_SR(sn));
+        sock_state[sn] = 1;
+
+        break;
+    default:
+        break;
+    }
+    return 1;
+}
 
 /**
  * ----------------------------------------------------------------------------------------------------
@@ -1196,14 +1421,14 @@ void set_phy_loopback_mode_CMD (void){
  * ----------------------------------------------------------------------------------------------------
  */
 
-void ES_PING_TEST(uint8_t cnt) {
+void ES_PING_TEST(uint8_t *dest_ip, uint8_t cnt) {
     PRINT_TEST_NAME();
     uint8_t result = 0; 
 
  
     uint8_t success_times = 0 ; 
     for(uint8_t i = 0 ; i < cnt ; i ++ ){
-           if ( Ping() == SUCCESS)
+           if ( Ping(dest_ip) == SUCCESS)
            {
             success_times ++ ;
            }
@@ -1236,7 +1461,7 @@ void ESTEST(void) {
 
     ES_SW_Reset();
     ES_HW_Reset();
-    HAL_Delay(200);
+    HAL_Delay(20);
     // ES_Set_Clk_25Mhz();
     // ES_Set_Clk_100Mhz();
 
@@ -1292,17 +1517,46 @@ void ESTEST(void) {
 
 
 }
-void ES_NET_TEST(void){
+
+void ES_NET_PING_TEST( uint8_t *dest_ip){
     printf("\r\n===================================\r\n");
     printf(    "========= Network TEST start=======\r\n");
     printf(    "===================================\r\n\n");
 
 
-    ES_PING_TEST(10);
+    ES_PING_TEST(dest_ip,10);
+} 
+
+#define ETHERNET_BUF_MAX_SIZE_ES (1024 * 32)
+static uint8_t g_udp_buf_main[ETHERNET_BUF_MAX_SIZE_ES * 2 ] = {
+    0,
+};
+
+
+void ES_NET_LOOPBACK_TEST( uint8_t *dest_ip){
+
+    PRINT_TEST_NAME();
+    uint8_t result; 
+    int retval = 0 ;
     
+    while (1)
+    {
+        if ((retval = ES_LOOPBACK_TEST_CLIENT(0, g_udp_buf_main, dest_ip, 5010)) < 0)
+        {
+            if (retval == -999){
+                result = SUCCESS;
+                break; 
+            }else{
+                printf(" loopback_udps error : %d\n", retval);
+                result = FAIL;
+                break;
 
-
-
+            }   
+            // while (1)
+            //     ;
+        }
+    }
+    PRINT_RESULT(result);
     printf_GREEN("\r\n===================================\r\n");
     printf_GREEN(    "=========== ES TEST finish=========\r\n");
     printf_GREEN(    "===================================\r\n\n");

@@ -232,9 +232,6 @@ static void Write_IP_info_to_flash (uint8_t *IPaddres ,uint32_t offset)
     // 4) Flash Lock (쓰기 완료 후 잠금)
 
 }
-
-
-
 static void read_IP_info_to_flash(uint8_t *IPaddres,uint32_t offset)
 {
     // Bank1의 시작 주소 0x08000000에서 200KB(0x32000)를 더한 주소
@@ -256,163 +253,6 @@ static void read_IP_info_to_flash(uint8_t *IPaddres,uint32_t offset)
     *(IPaddres+1) = (uint8_t)((readValue >> 8) & 0xFF);
     *(IPaddres+2) = (uint8_t)((readValue >> 16) & 0xFF);
     *(IPaddres+3) = (uint8_t)((readValue >> 24) & 0xFF);
-}
-
-
-
-void ES_loopback(void){
-  PRINT_TEST_NAME();
-    uint8_t result ; 
-    int32_t ret;
-    uint16_t sentsize=0;
-    int8_t status0,inter;
-    int8_t status1;
-    uint8_t tmp = 0;
-    uint16_t received_size;
-    uint8_t arg_tmp8;
-    uint8_t* mode_msg;
-
-
-    uint8_t socket0_temp = 0;
-    uint8_t socket1_temp = 0;   
-    uint8_t pingSourceIP[4] ;
-    getSIPR(pingSourceIP);
-
-    set_phy_loopback_mode_MDIO();
- 
-
-
-    getsockopt(socket_0, SO_STATUS, &status0);
-    getsockopt(socket_1, SO_STATUS, &status1);
-  
-    while(status0 != SOCK_CLOSED) { HAL_Delay(100);}
-    while(status1 != SOCK_CLOSED) { HAL_Delay(100);}
-
-    socket0_temp = socket(socket_0, Sn_MR_TCP4, socket_0_port, 0);
-    socket1_temp = socket(socket_1, Sn_MR_TCP4, socket_1_port, 0);
-
-  
-    while(status0 != SOCK_INIT) { HAL_Delay(100);getsockopt(socket_0, SO_STATUS, &status0);}
-    while(status1 != SOCK_INIT) { HAL_Delay(100);getsockopt(socket_1, SO_STATUS, &status1);}
-
-    printf("success = socket\r\n");
-
-    getsockopt(socket_0, SO_STATUS, &status0);
-    getsockopt(socket_1, SO_STATUS, &status1);
-    printf("sock_stat = %d / %d \r\n" , status0,status1); 
-
-    if( (ret = listen(socket_0)) != SOCK_OK) return ret;
-
-    printf("\t\t%d:Listen, TCP server loopback, port [%d] \r\n", socket_0, socket_0_port);
-    
-   
-    while(status0 != SOCK_LISTEN) { 
-      HAL_Delay(100);
-      getsockopt(socket_0, SO_STATUS, &status0);
-      
-    }
-        
-    // HAL_Delay(1000);s
-    //   /* for debug*/
-    //     getsockopt(socket_0, SO_STATUS, &status0);
-    //     if (status0 == SOCK_LISTEN){
-    //       printf("connect_sock_stat = SOCK_LISTEN \r\n"); 
-    //     }else{
-    //       printf("connect_sock_stat = %d \r\n" ,status0); 
-    //     }
-
-    uint8_t destip[4] ={ 192,168,11,44} ;
-    while( status1 != SOCK_ESTABLISHED ){
-      getsockopt(socket_0, SO_STATUS, &status0);
-      getsockopt(socket_1, SO_STATUS, &status1);
-      printf("sock_stat = %d / %d \r\n" , status0,status1); 
-
-      ES_PHY_MDIO_READ_TEST(0x0000) ; 
-      if (status1 == SOCK_CLOSED ){
-         socket(socket_1, Sn_MR_TCP4, socket_1_port, 0);
-      }else if (status1 == SOCK_INIT ) {
-        printf("%d:Try to connect to the %d.%d.%d.%d, %d\r\n", socket_1, destip[0], destip[1], destip[2], destip[3], socket_0_port);
-        ret = connect(socket_1, destip, socket_0_port, 4);
-        printf("connect RESULT =  %d \r\n" , ret);
-      }
-    
-      HAL_Delay(1000) ; 
-    }
-
-    HAL_Delay(100);
-    getsockopt(socket_0, SO_STATUS, &status0);
-    getsockopt(socket_1, SO_STATUS, &status1);
-    printf("sock_stat = %d / %d \r\n" , status0,status1); 
-    HAL_Delay(100);
-
-    while(status1 != SOCK_ESTABLISHED){
-       HAL_Delay(100);
-    }
-      printf("success = SOCK_ESTABLISHED \r\n");
-    PRINT_RESULT(SUCCESS) ; 
-
-}
-
-void ES_loopback_udp(void){
-  PRINT_TEST_NAME();
-    uint8_t result ; 
-    int32_t ret;
-    uint16_t sentsize=0;
-    int8_t status0,inter;
-    int8_t status1;
-    uint8_t tmp = 0;
-    uint16_t received_size;
-    uint8_t arg_tmp8;
-    uint8_t* mode_msg;
-
-
-    uint8_t socket0_temp = 0;
-    uint8_t socket1_temp = 0;   
-    uint8_t pingSourceIP[4] = {255,255,255,255} ;
-    getSIPR(pingSourceIP);
-
-    // set_phy_loopback_mode_MDIO();
- 
-    getsockopt(socket_0, SO_STATUS, &status0);
-    getsockopt(socket_1, SO_STATUS, &status1);
-  
-    while(status0 != SOCK_CLOSED) { HAL_Delay(100);}
-    while(status1 != SOCK_CLOSED) { HAL_Delay(100);}
-
-    if((socket0_temp = socket(socket_0, Sn_MR_UDP, socket_0_port, 0x00)) == socket_0){
-      printf("[iOLB5]%d:_Opened, UDP loopback, port [%d]\r\n", socket_0, socket_0_port);
-    }
-
-    if((socket1_temp = socket(socket_1, Sn_MR_UDP, socket_1_port, 0x00)) == socket_1){
-      printf("[iOLB5]%d:_Opened, UDP loopback, port [%d]\r\n", socket_1, socket_1_port);
-    }
-
-    HAL_Delay(100);
-    getsockopt(socket_0, SO_STATUS, &status0);
-    getsockopt(socket_1, SO_STATUS, &status1);
-    printf("sock_stat = %d / %d \r\n" , status0,status1); 
-    HAL_Delay(100);
-    while(status0 != SOCK_UDP) { HAL_Delay(100);}
-    while(status1 != SOCK_UDP) { HAL_Delay(100);}
-
-    uint8_t* send_buf = "hello_world";
-    uint8_t* recieve_buf = "hello_world";
- 
-    ret = sendto(socket_1, send_buf, 6, pingSourceIP, socket_0,4);
-    if(ret < 0)
-    {
-      printf("sendto = %d \r\n", ret ) ;
-    }
-    uint8_t size = getSn_RX_RSR(socket_0);
-    printf("size = %d \r\n", size ) ; 
-
-    recvfrom(socket_0, recieve_buf, size, pingSourceIP, socket_1,4);
-
-    for ( int i = 0; i < size ; i++ ){
-      printf(" %c " , recieve_buf[i]);
-    }
-    printf("\r\n" );
-    PRINT_RESULT(SUCCESS) ; 
 }
 
 
@@ -449,23 +289,6 @@ int GetIPAddress(uint8_t *ip )
     return (count == 4) ? 1 : 0;
 }
 
-void ES_LOOPBACK_TEST(void){
-  PRINT_TEST_NAME();
-  int retval ; 
-  while (1)
-  {
-    if ((retval = loopback_tcpc(SOCKET, g_udp_buf_main, WIZ_Dest_IP, 5010)) < 0)
-    {
-      if (retval == -999){
-        PRINT_RESULT(SUCCESS);
-        return SUCCESS;
-      }
-      printf(" loopback_udps error : %d\n", retval);
-      while (1)
-          ;
-    }
-  }
-}
 
 int main(void)
 {
@@ -547,7 +370,14 @@ int main(void)
                                     HAL_GPIO_ReadPin(MOD2_GPIO_Port, MOD2_Pin) |HAL_GPIO_ReadPin(MOD3_GPIO_Port, MOD3_Pin)); 
 
     read_IP_info_to_flash(gWIZNETINFO.ip,0);
+    gWIZNETINFO.gw[0] = gWIZNETINFO.ip[0];
+    gWIZNETINFO.gw[1] = gWIZNETINFO.ip[1];
+    gWIZNETINFO.gw[2] = gWIZNETINFO.ip[2];
+    gWIZNETINFO.gw[3] = 1;
+ 
     printf("read [W6300] IP: %03d.%03d.%03d.%03d \r\n", gWIZNETINFO.ip[0] ,gWIZNETINFO.ip[1] ,gWIZNETINFO.ip[2] ,gWIZNETINFO.ip[3] );
+    printf("->gateway : %03d.%03d.%03d.%03d \r\n", gWIZNETINFO.gw[0] ,gWIZNETINFO.gw[1] ,gWIZNETINFO.gw[2] ,gWIZNETINFO.gw[3] );
+    
     read_IP_info_to_flash(WIZ_Dest_IP,1);
     printf("read [Dest ] IP: %03d.%03d.%03d.%03d \r\n", WIZ_Dest_IP[0] ,WIZ_Dest_IP[1] ,WIZ_Dest_IP[2] ,WIZ_Dest_IP[3] );
   }

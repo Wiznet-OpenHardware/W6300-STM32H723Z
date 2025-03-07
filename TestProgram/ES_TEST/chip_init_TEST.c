@@ -108,7 +108,7 @@ void ES_SW_Reset(void){    //Chip HW Reset
 
     HAL_Delay(10);
     setSYCR0(SYCR0_RST);
-    HAL_Delay(100);
+    HAL_Delay(10);
 
     //delay
     uint8_t result = checkDefualtData(); 
@@ -126,7 +126,7 @@ void ES_HW_Reset(void){    //Chip HW Reset
 
     HAL_Delay(10);
     chip_hw_reset();
-    HAL_Delay(100);
+    HAL_Delay(10);
 
     uint8_t result = checkDefualtData(); 
 
@@ -251,16 +251,14 @@ uint8_t ES_TEST_BUFFER_TEST_write_read (uint8_t offset , uint8_t *wizdata, uint3
     char str[3][3] = {"RX", "TX"}; 
     int socketTX_RX = offset % 2;
 
-    wiz_delay_ms(5);
-
     uint32_t addrsel =  offset;
     const uint32_t lenValue = len ; 
     uint8_t readData[lenValue] ;
 
     WIZCHIP_WRITE_BUF(addrsel,wizdata, lenValue);
-    HAL_Delay(10);
+    HAL_Delay(2);
     WIZCHIP_READ_BUF(addrsel,readData, lenValue); 
-    HAL_Delay(10);
+    HAL_Delay(2);
 
     result = memcmp(wizdata, readData, lenValue);
 
@@ -324,7 +322,6 @@ uint8_t ES_TEST_BUFFER_TEST(uint32_t len_max){
                 PRINT_RESULT(result); 
                // return result ; 
             }
-            HAL_Delay (10);
         }
     }
     printf("\r\n") ; 
@@ -351,7 +348,6 @@ uint8_t ES_TEST_BUFFER_TEST(uint32_t len_max){
                 PRINT_RESULT(result); 
                // return result ; 
             }
-            HAL_Delay (10);
         }
     }
     printf("\r\n") ; 
@@ -1032,7 +1028,7 @@ void ES_SET_PHY_POWER_DOWN(uint8_t data){   //Phy Power Down
 
     uint8_t power_mode = ( getPHYCR1() & ~0x20) | ( data << 5);
     setPHYCR1( power_mode ); 
-    HAL_Delay(200); 
+    HAL_Delay(20); 
     power_mode =  (getPHYCR1() & 0x20) >> 5  ;
 
 
@@ -1179,14 +1175,14 @@ void set_phy_loopback_mode_CMD (void){
     printf("\t\t -wiz_mdio_read(0x0000)=%04x \r\n" ,wiz_mdio_read(0x0000));
     setPHYCR1(getPHYCR1() | 0x10);
     // wiz_mdio_write(0x0000, wiz_mdio_read(0x0000)  & ~0x4000);
-    HAL_Delay(200);
+    HAL_Delay(20);
 
     printf("\t\t------------after--------------------\r\n");
     printf ("\t\t-getPHYCR1= %04x \r\n" ,  getPHYCR1());
     printf("\t\t -wiz_mdio_read(0x0000)=%04x \r\n" ,wiz_mdio_read(0x0000));
     setPHYCR1(getPHYCR1() | 0x01);
     
-    HAL_Delay(200);
+    HAL_Delay(20);
     printf("\t\t------------after--------------------\r\n");
     printf ("\t\t-getPHYCR1= %04x \r\n" ,  getPHYCR1());
     printf("\t\t -wiz_mdio_read(0x0000)=%04x \r\n" ,wiz_mdio_read(0x0000));
@@ -1203,9 +1199,11 @@ int32_t ES_LOOPBACK_TEST_CLIENT(uint8_t sn, uint8_t* buf, uint8_t* destip, uint1
     uint8_t tmp = 0;
     uint8_t arg_tmp8;
     wiz_IPAddress destinfo;
-    uint8_t* TEST_buf = "hello!__I_am_W6300_Thank_you$0d$0a";
+    uint8_t* TEST_buf = "hello!__I_am_W6300_Thank_you";
     static uint8_t send_state = 0 ;
+    static uint8_t revc_state = 0 ;
     static uint8_t send_cnt = 0 ;
+    static uint8_t receive_cnt = 0 ; 
 
 #if 1
 	// 20231018 taylor
@@ -1228,9 +1226,11 @@ int32_t ES_LOOPBACK_TEST_CLIENT(uint8_t sn, uint8_t* buf, uint8_t* destip, uint1
         // Data Transaction Parts; Handle the [data receive and send] process
         //////////////////////////////////////////////////////////////////////////////////////////////
         getsockopt(sn, SO_RECVBUF, &received_size);
-        if(received_size == 0 && send_state == 0) // Sn_RX_RSR: Socket n Received Size Register, Receiving data length
+
+        if(received_size == 0 && send_state == 0 && revc_state == 0 ) // send data
         {
-            ret = send(sn, TEST_buf, strlen(TEST_buf) - 10);
+            ret = send(sn, TEST_buf, strlen(TEST_buf) - 1);
+            send_cnt++;
             if(ret < 0) // Send Error occurred (sent data length < 0)
             {
                 printf("close_%d \r\n",ret);
@@ -1238,33 +1238,47 @@ int32_t ES_LOOPBACK_TEST_CLIENT(uint8_t sn, uint8_t* buf, uint8_t* destip, uint1
                 return ret;
             }
             send_state = 1; 
-            HAL_Delay(100);
+            HAL_Delay(10);
         }
-        else if(received_size != 0 ) // Sn_RX_RSR: Socket n Received Size Register, Receiving data length
+        else if(received_size != 0 && send_state == 1 && revc_state == 0 ) // revice data 
         {
-            printf("\t\t[%02d] loopback recieve\r\n", send_cnt);
-            
             if(received_size > DATA_BUF_SIZE) received_size = DATA_BUF_SIZE; // DATA_BUF_SIZE means user defined buffer size (array)
             ret = recv(sn, buf, received_size); // Data Receive process (H/W Rx socket buffer -> User's buffer)
-
             if(ret <= 0) return ret; // If the received data length <= 0, receive failed and process end
             received_size = (uint16_t) ret;
+            revc_state = 1; 
             // Data sentsize control
-        }else if(received_size == 0 && send_state == 1 ) {
-            if (memcmp(TEST_buf ,buf , strlen(TEST_buf) - 10) == 0){
-                printf("\t\t[%02d] loopback OK\r\n", send_cnt);
-                send_state = 0; 
-                send_cnt++;
-            }else{
-                printf("send data = %s \r\n ",TEST_buf) ;  
-                printf("send data = %s \r\n ",buf) ;  
+        }
+
+        
+        if(revc_state == 1 && send_state == 1 ) { // compare data 
+            send_state = 0 ; 
+            revc_state = 0 ; 
+            if (memcmp(TEST_buf ,buf , strlen(TEST_buf) - 1) == 0)
+            {
+                receive_cnt ++ ;
+                memset(buf, 0x00, strlen(TEST_buf));
+                printf("\t\t[%02d/%02d] loopback OK.. \r\n",receive_cnt ,  send_cnt);
+            }
+            else
+            {
                 printf("\t\t[%02d] memcmp errror \r\n", send_cnt);
-                send_state = 0; 
+                printf("send buf = %s \r\n  ",TEST_buf ) ; 
+                printf("recv buf = %s \r\n  ",buf ) ; 
+ 
             }
-            if (send_cnt >=10 ){
+            
+            
+            if ((send_cnt >=10)  && (receive_cnt == send_cnt) ) //success 
+            {
                 return -999;
+            }else if(send_cnt >=10)
+            {
+                return -888;
             }
-            HAL_Delay(100);
+
+            HAL_Delay(10);
+        
         }
         //////////////////////////////////////////////////////////////////////////////////////////////
         break;
@@ -1531,8 +1545,6 @@ void ES_NET_PING_TEST( uint8_t *dest_ip){
 static uint8_t g_udp_buf_main[ETHERNET_BUF_MAX_SIZE_ES * 2 ] = {
     0,
 };
-
-
 void ES_NET_LOOPBACK_TEST( uint8_t *dest_ip){
 
     PRINT_TEST_NAME();

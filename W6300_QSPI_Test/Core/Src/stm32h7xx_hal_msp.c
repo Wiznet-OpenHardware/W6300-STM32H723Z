@@ -96,14 +96,12 @@ void HAL_OSPI_MspInit(OSPI_HandleTypeDef* hospi)
     __HAL_RCC_OSPI1_CLK_ENABLE();
 
     __HAL_RCC_GPIOF_CLK_ENABLE();
-    __HAL_RCC_GPIOG_CLK_ENABLE();
     /**OCTOSPI1 GPIO Configuration
     PF6     ------> OCTOSPIM_P1_IO3
     PF7     ------> OCTOSPIM_P1_IO2
     PF8     ------> OCTOSPIM_P1_IO0
     PF9     ------> OCTOSPIM_P1_IO1
     PF10     ------> OCTOSPIM_P1_CLK
-    PG6     ------> OCTOSPIM_P1_NCS
     */
     GPIO_InitStruct.Pin = GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
@@ -118,13 +116,6 @@ void HAL_OSPI_MspInit(OSPI_HandleTypeDef* hospi)
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
     GPIO_InitStruct.Alternate = GPIO_AF9_OCTOSPIM_P1;
     HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
-
-    GPIO_InitStruct.Pin = GPIO_PIN_6;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    GPIO_InitStruct.Alternate = GPIO_AF10_OCTOSPIM_P1;
-    HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
 
     /* OCTOSPI1 MDMA Init */
     /* OCTOSPI1_FIFO_TH Init */
@@ -188,12 +179,9 @@ void HAL_OSPI_MspDeInit(OSPI_HandleTypeDef* hospi)
     PF8     ------> OCTOSPIM_P1_IO0
     PF9     ------> OCTOSPIM_P1_IO1
     PF10     ------> OCTOSPIM_P1_CLK
-    PG6     ------> OCTOSPIM_P1_NCS
     */
     HAL_GPIO_DeInit(GPIOF, GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9
                           |GPIO_PIN_10);
-
-    HAL_GPIO_DeInit(GPIOG, GPIO_PIN_6);
 
     /* OCTOSPI1 MDMA DeInit */
     HAL_MDMA_DeInit(hospi->hmdma);
@@ -400,6 +388,7 @@ static void HAL_FMC_MspInit(void){
   PE10   ------> FMC_D7
   PD14   ------> FMC_D0
   PD15   ------> FMC_D1
+  PG6   ------> FMC_NE3
   PD0   ------> FMC_D2
   PD1   ------> FMC_D3
   PD4   ------> FMC_NOE
@@ -428,19 +417,26 @@ static void HAL_FMC_MspInit(void){
   GPIO_InitStruct.Alternate = GPIO_AF12_FMC;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
+  GPIO_InitStruct.Pin = GPIO_PIN_6;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF12_FMC;
+  HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
+
   /* USER CODE BEGIN FMC_MspInit 1 */
 
   /* USER CODE END FMC_MspInit 1 */
 }
 
-void HAL_NOR_MspInit(NOR_HandleTypeDef* hnor){
-  /* USER CODE BEGIN NOR_MspInit 0 */
+void HAL_SRAM_MspInit(SRAM_HandleTypeDef* hsram){
+  /* USER CODE BEGIN SRAM_MspInit 0 */
 
-  /* USER CODE END NOR_MspInit 0 */
+  /* USER CODE END SRAM_MspInit 0 */
   HAL_FMC_MspInit();
-  /* USER CODE BEGIN NOR_MspInit 1 */
+  /* USER CODE BEGIN SRAM_MspInit 1 */
 
-  /* USER CODE END NOR_MspInit 1 */
+  /* USER CODE END SRAM_MspInit 1 */
 }
 
 static uint32_t FMC_DeInitialized = 0;
@@ -465,6 +461,7 @@ static void HAL_FMC_MspDeInit(void){
   PE10   ------> FMC_D7
   PD14   ------> FMC_D0
   PD15   ------> FMC_D1
+  PG6   ------> FMC_NE3
   PD0   ------> FMC_D2
   PD1   ------> FMC_D3
   PD4   ------> FMC_NOE
@@ -478,19 +475,21 @@ static void HAL_FMC_MspDeInit(void){
   HAL_GPIO_DeInit(GPIOD, GPIO_PIN_14|GPIO_PIN_15|GPIO_PIN_0|GPIO_PIN_1
                           |GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_7);
 
+  HAL_GPIO_DeInit(GPIOG, GPIO_PIN_6);
+
   /* USER CODE BEGIN FMC_MspDeInit 1 */
 
   /* USER CODE END FMC_MspDeInit 1 */
 }
 
-void HAL_NOR_MspDeInit(NOR_HandleTypeDef* hnor){
-  /* USER CODE BEGIN NOR_MspDeInit 0 */
+void HAL_SRAM_MspDeInit(SRAM_HandleTypeDef* hsram){
+  /* USER CODE BEGIN SRAM_MspDeInit 0 */
 
-  /* USER CODE END NOR_MspDeInit 0 */
+  /* USER CODE END SRAM_MspDeInit 0 */
   HAL_FMC_MspDeInit();
-  /* USER CODE BEGIN NOR_MspDeInit 1 */
+  /* USER CODE BEGIN SRAM_MspDeInit 1 */
 
-  /* USER CODE END NOR_MspDeInit 1 */
+  /* USER CODE END SRAM_MspDeInit 1 */
 }
 
 /* USER CODE BEGIN 1 */

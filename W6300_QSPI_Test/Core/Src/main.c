@@ -79,7 +79,7 @@ SPI_HandleTypeDef hspi2;
 
 UART_HandleTypeDef huart2;
 
-NOR_HandleTypeDef hnor1;
+SRAM_HandleTypeDef hsram1;
 
 /* USER CODE BEGIN PV */
 //uint8_t W6300_mode = QSPI_MODE;//0; //W6100 >> 0xFF
@@ -169,6 +169,124 @@ uint8_t is_testing = 0; // 0 : not testing, 1 : testing
   * @brief  The application entry point.
   * @retval int
   */
+void W6100BusWriteByte(uint32_t addr, iodata_t data)
+{
+	#if 0	//teddy 210422
+	(*(volatile uint8_t*)(addr)) = data;
+	#endif
+	if(HAL_SRAM_Write_8b(&hsram1, (volatile uint8_t*)addr, &data, 1) != HAL_OK)
+		printf("BusWritError \r\n");
+}
+
+iodata_t W6100BusReadByte(uint32_t addr)
+{
+	#if 0	//teddy 210422
+	return (*((volatile uint8_t*)(addr)));
+	#endif
+	iodata_t result = 0;
+	if(HAL_SRAM_Read_8b(&hsram1, (volatile uint8_t*)addr, &result, 0) != HAL_OK)
+		printf("BussReadError \r\n");
+	return result;
+}
+
+void W6100BusWriteBurst(uint32_t addr, uint8_t* pBuf ,uint32_t len,uint8_t addr_inc)
+{
+#ifdef USE_STDPERIPH_DRIVER
+
+	if(addr_inc){
+	 	DMA_TX_InitStructure.DMA_MemoryInc  = DMA_MemoryInc_Enable;
+
+	}
+	else 	DMA_TX_InitStructure.DMA_MemoryInc  = DMA_MemoryInc_Disable;
+
+
+	DMA_TX_InitStructure.DMA_BufferSize = len;
+	DMA_TX_InitStructure.DMA_MemoryBaseAddr = addr;
+	DMA_TX_InitStructure.DMA_PeripheralBaseAddr = pBuf;
+
+	DMA_Init(W6100_DMA_CHANNEL_TX, &DMA_TX_InitStructure);
+
+	DMA_Cmd(W6100_DMA_CHANNEL_TX, ENABLE);
+
+	/* Enable SPI Rx/Tx DMA Request*/
+
+	/* Waiting for the end of Data Transfer */
+	while(DMA_GetFlagStatus(DMA_TX_FLAG) == RESET);
+
+	DMA_ClearFlag(DMA_TX_FLAG);
+
+	DMA_Cmd(W6100_DMA_CHANNEL_TX, DISABLE);
+
+#elif defined USE_HAL_DRIVER
+
+#endif
+
+}
+
+void W6100BusReadBurst(uint32_t addr,uint8_t* pBuf, uint32_t len,uint8_t addr_inc)
+{
+#ifdef USE_STDPERIPH_DRIVER
+
+	DMA_RX_InitStructure.DMA_BufferSize = len;
+	DMA_RX_InitStructure.DMA_MemoryBaseAddr =pBuf;
+	DMA_RX_InitStructure.DMA_PeripheralBaseAddr =addr;
+
+	DMA_Init(W6100_DMA_CHANNEL_RX, &DMA_RX_InitStructure);
+
+	DMA_Cmd(W6100_DMA_CHANNEL_RX, ENABLE);
+	/* Waiting for the end of Data Transfer */
+	while(DMA_GetFlagStatus(DMA_RX_FLAG) == RESET);
+
+
+	DMA_ClearFlag(DMA_RX_FLAG);
+
+
+	DMA_Cmd(W6100_DMA_CHANNEL_RX, DISABLE);
+
+#elif defined USE_HAL_DRIVER
+
+#endif
+
+	
+
+}
+
+
+#define EXT_MEM_BASE 0x68000000
+volatile uint8_t* pExt = (volatile uint8_t*)EXT_MEM_BASE;
+
+void W6100BusWriteByte_2(uint32_t addr, iodata_t data)
+{
+    pExt[0] = 0;  // A[1:0] = 0
+    pExt[1] = 0;  // A[1:0] = 1
+    pExt[2] = 0;     // A[1:0] = 2
+
+	(*(volatile uint8_t *)((uint32_t)(addr)) = (data)); 
+}
+
+iodata_t W6100BusReadByte_test(uint32_t addr)
+{
+	iodata_t ret;
+ pExt[0] = (addr >> 16) && 0xff;  // A[1:0] = 0
+ pExt[1] = (addr >>  8) && 0xff;  // A[1:0] = 1
+ pExt[2] = (addr >>  0) && 0xff;     // A[1:0] = 2
+ ret = pExt[3];
+ return ret ;
+}
+
+iodata_t W6100BusReadburst_test(uint32_t addr, uint32_t len)
+{
+	iodata_t ret;
+ pExt[0] = (addr >> 16) && 0xff;  // A[1:0] = 0
+ pExt[1] = (addr >>  8) && 0xff;  // A[1:0] = 1
+ pExt[2] = (addr >>  0) && 0xff;     // A[1:0] = 2
+ // for()1
+   ret = pExt[3];
+ return ret ;
+}
+
+
+
 
 int main(void)
 {
@@ -199,11 +317,12 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_MDMA_Init();
-  MX_OCTOSPI1_Init();
-  //MX_FMC_Init();
-  MX_USART2_UART_Init();
-  MX_SPI2_Init();
+  // MX_MDMA_Init();
+
+   MX_FMC_Init();
+    MX_USART2_UART_Init();
+  // /MX_SPI2_Init();
+    HAL_Delay(1000);
 
   printf("W6300 test Program V%04d \r\n", RTLVERSiON);
   printf("Compile %s - %s \r\n", __DATE__, __TIME__);
@@ -214,8 +333,6 @@ int main(void)
   printf("QSPI CLK %d Mhz \r\n", (uint16_t)(PLL2_Clk_data.PLL2_R_Frequency / hospi1.Init.ClockPrescaler / 1000000));
 
 	chip_hw_reset();
-
-#ifndef FPGA_USED
   uint8_t mode = QSPI_MODE;
 
   mode |= HAL_GPIO_ReadPin(MOD0_GPIO_Port, MOD0_Pin) << 0; // MOD0 �???????? (?��?�� 비트)
@@ -424,60 +541,7 @@ void PeriphCommonClock_Config(void)
   * @param None
   * @retval None
   */
-static void MX_OCTOSPI1_Init(void)
-{
 
-  /* USER CODE BEGIN OCTOSPI1_Init 0 */
-
-  /* USER CODE END OCTOSPI1_Init 0 */
-
-  OSPIM_CfgTypeDef sOspiManagerCfg = {0};
-
-  /* USER CODE BEGIN OCTOSPI1_Init 1 */
-
-  /* USER CODE END OCTOSPI1_Init 1 */
-  /* OCTOSPI1 parameter configuration*/
-  hospi1.Instance = OCTOSPI1;
-  hospi1.Init.FifoThreshold = 1;
-  hospi1.Init.DualQuad = HAL_OSPI_DUALQUAD_DISABLE;
-  hospi1.Init.MemoryType = HAL_OSPI_MEMTYPE_MICRON;
-  hospi1.Init.DeviceSize = 17;
-  hospi1.Init.ChipSelectHighTime = 1;
-  hospi1.Init.FreeRunningClock = HAL_OSPI_FREERUNCLK_DISABLE;
-  hospi1.Init.ClockMode = HAL_OSPI_CLOCK_MODE_3;
-  hospi1.Init.WrapSize = HAL_OSPI_WRAP_NOT_SUPPORTED;
-  hospi1.Init.ClockPrescaler = 2;
-  
-  #if 1
-  hospi1.Init.SampleShifting = HAL_OSPI_SAMPLE_SHIFTING_NONE;
-  hospi1.Init.DelayHoldQuarterCycle = HAL_OSPI_DHQC_DISABLE;
-  #else //by_lihan for TEST 
-  hospi1.Init.SampleShifting = HAL_OSPI_SAMPLE_SHIFTING_HALFCYCLE ; 
-  //hospi1.Init.SampleShifting = HAL_OSPI_SAMPLE_SHIFTING_NONE;
-  hospi1.Init.DelayHoldQuarterCycle = HAL_OSPI_DHQC_DISABLE;
-  //hospi1.Init.DelayHoldQuarterCycle = HAL_OSPI_DHQC_ENABLE;         
-  #endif 
-
-  hospi1.Init.ChipSelectBoundary = 0;
-  hospi1.Init.DelayBlockBypass = HAL_OSPI_DELAY_BLOCK_BYPASSED;
-  hospi1.Init.MaxTran = 0;
-  hospi1.Init.Refresh = 0;
-  if (HAL_OSPI_Init(&hospi1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sOspiManagerCfg.ClkPort = 1;
-  sOspiManagerCfg.NCSPort = 1;
-  sOspiManagerCfg.IOLowPort = HAL_OSPIM_IOPORT_1_LOW;
-  if (HAL_OSPIM_Config(&hospi1, &sOspiManagerCfg, HAL_OSPI_TIMEOUT_DEFAULT_VALUE) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN OCTOSPI1_Init 2 */
-
-  /* USER CODE END OCTOSPI1_Init 2 */
-
-}
 /**
   * @brief SPI2 Initialization Function
   * @param None
@@ -588,6 +652,7 @@ static void MX_MDMA_Init(void)
   HAL_NVIC_EnableIRQ(MDMA_IRQn);
 
 }
+
 /* FMC initialization function */
 static void MX_FMC_Init(void)
 {
@@ -599,40 +664,40 @@ static void MX_FMC_Init(void)
   FMC_NORSRAM_TimingTypeDef Timing = {0};
 
   /* USER CODE BEGIN FMC_Init 1 */
-  hnor1.CommandSet = 0x0013;
+
   /* USER CODE END FMC_Init 1 */
 
-  /** Perform the NOR1 memory initialization sequence
+  /** Perform the SRAM1 memory initialization sequence
   */
-  hnor1.Instance = FMC_NORSRAM_DEVICE;
-  hnor1.Extended = FMC_NORSRAM_EXTENDED_DEVICE;
-  /* hnor1.Init */
-  hnor1.Init.NSBank = FMC_NORSRAM_BANK1;
-  hnor1.Init.DataAddressMux = FMC_DATA_ADDRESS_MUX_DISABLE;
-  hnor1.Init.MemoryType = FMC_MEMORY_TYPE_NOR;
-  hnor1.Init.MemoryDataWidth = FMC_NORSRAM_MEM_BUS_WIDTH_8;
-  hnor1.Init.BurstAccessMode = FMC_BURST_ACCESS_MODE_DISABLE;
-  hnor1.Init.WaitSignalPolarity = FMC_WAIT_SIGNAL_POLARITY_LOW;
-  hnor1.Init.WaitSignalActive = FMC_WAIT_TIMING_BEFORE_WS;
-  hnor1.Init.WriteOperation = FMC_WRITE_OPERATION_ENABLE;
-  hnor1.Init.WaitSignal = FMC_WAIT_SIGNAL_DISABLE;
-  hnor1.Init.ExtendedMode = FMC_EXTENDED_MODE_DISABLE;
-  hnor1.Init.AsynchronousWait = FMC_ASYNCHRONOUS_WAIT_DISABLE;
-  hnor1.Init.WriteBurst = FMC_WRITE_BURST_DISABLE;
-  hnor1.Init.ContinuousClock = FMC_CONTINUOUS_CLOCK_SYNC_ONLY;
-  hnor1.Init.WriteFifo = FMC_WRITE_FIFO_ENABLE;
-  hnor1.Init.PageSize = FMC_PAGE_SIZE_NONE;
+  hsram1.Instance = FMC_NORSRAM_DEVICE;
+  hsram1.Extended = FMC_NORSRAM_EXTENDED_DEVICE;
+  /* hsram1.Init */
+  hsram1.Init.NSBank = FMC_NORSRAM_BANK3;
+  hsram1.Init.DataAddressMux = FMC_DATA_ADDRESS_MUX_DISABLE;
+  hsram1.Init.MemoryType = FMC_MEMORY_TYPE_SRAM;
+  hsram1.Init.MemoryDataWidth = FMC_NORSRAM_MEM_BUS_WIDTH_8;
+  hsram1.Init.BurstAccessMode = FMC_BURST_ACCESS_MODE_DISABLE;
+  hsram1.Init.WaitSignalPolarity = FMC_WAIT_SIGNAL_POLARITY_LOW;
+  hsram1.Init.WaitSignalActive = FMC_WAIT_TIMING_BEFORE_WS;
+  hsram1.Init.WriteOperation = FMC_WRITE_OPERATION_ENABLE;
+  hsram1.Init.WaitSignal = FMC_WAIT_SIGNAL_DISABLE;
+  hsram1.Init.ExtendedMode = FMC_EXTENDED_MODE_DISABLE;
+  hsram1.Init.AsynchronousWait = FMC_ASYNCHRONOUS_WAIT_DISABLE;
+  hsram1.Init.WriteBurst = FMC_WRITE_BURST_DISABLE;
+  hsram1.Init.ContinuousClock = FMC_CONTINUOUS_CLOCK_SYNC_ONLY;
+  hsram1.Init.WriteFifo = FMC_WRITE_FIFO_DISABLE;
+  hsram1.Init.PageSize = FMC_PAGE_SIZE_NONE;
   /* Timing */
-  Timing.AddressSetupTime = 5;
+  Timing.AddressSetupTime = 4;
   Timing.AddressHoldTime = 15;
-  Timing.DataSetupTime = 5;
-  Timing.BusTurnAroundDuration = 5;
+  Timing.DataSetupTime = 2;
+  Timing.BusTurnAroundDuration = 1;
   Timing.CLKDivision = 16;
   Timing.DataLatency = 17;
   Timing.AccessMode = FMC_ACCESS_MODE_A;
   /* ExtTiming */
 
-  if (HAL_NOR_Init(&hnor1, &Timing, NULL) != HAL_OK)
+  if (HAL_SRAM_Init(&hsram1, &Timing, NULL) != HAL_OK)
   {
     Error_Handler( );
   }
@@ -641,6 +706,7 @@ static void MX_FMC_Init(void)
 
   /* USER CODE END FMC_Init 2 */
 }
+
 /**
   * @brief GPIO Initialization Function
   * @param None

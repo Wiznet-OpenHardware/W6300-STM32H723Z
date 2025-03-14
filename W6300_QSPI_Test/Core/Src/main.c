@@ -140,7 +140,7 @@ static void MX_SPI2_Init(void);
 void print_network_information(void);
 /* USER CODE END PFP */
 char SPI_CLK_SET(uint16_t set_clk_data);
-
+void MPU_Config_FMC_Region(void);
 /* Private user code ---------------------------------------------------------*/
 
 /* USER CODE BEGIN 0 */
@@ -169,22 +169,22 @@ uint8_t is_testing = 0; // 0 : not testing, 1 : testing
   * @brief  The application entry point.
   * @retval int
   */
-void W6100BusWriteByte(uint32_t addr, iodata_t data)
+void W6100BusWriteByte(uint8_t* addr, iodata_t data)
 {
 	#if 0	//teddy 210422
 	(*(volatile uint8_t*)(addr)) = data;
 	#endif
-	if(HAL_SRAM_Write_8b(&hsram1, (volatile uint8_t*)addr, &data, 1) != HAL_OK)
+	if(HAL_SRAM_Write_8b(&hsram1,addr, &data, 1) != HAL_OK)
 		printf("BusWritError \r\n");
 }
 
-iodata_t W6100BusReadByte(uint32_t addr)
+uint16_t W6100BusReadByte(uint8_t* addr)
 {
 	#if 0	//teddy 210422
 	return (*((volatile uint8_t*)(addr)));
 	#endif
-	iodata_t result = 0;
-	if(HAL_SRAM_Read_8b(&hsram1, (volatile uint8_t*)addr, &result, 0) != HAL_OK)
+	uint16_t result = 0;
+	if(HAL_SRAM_Read_8b(&hsram1,addr, &result, 1) != HAL_OK)
 		printf("BussReadError \r\n");
 	return result;
 }
@@ -253,10 +253,10 @@ void W6100BusReadBurst(uint32_t addr,uint8_t* pBuf, uint32_t len,uint8_t addr_in
 
 
 #define EXT_MEM_BASE 0x68000000
-volatile uint8_t* pExt = (volatile uint8_t*)EXT_MEM_BASE;
 
 void W6100BusWriteByte_2(uint32_t addr, iodata_t data)
 {
+volatile uint8_t* pExt = (volatile uint8_t*)EXT_MEM_BASE;
     pExt[0] = 0;  // A[1:0] = 0
     pExt[1] = 0;  // A[1:0] = 1
     pExt[2] = 0;     // A[1:0] = 2
@@ -264,12 +264,13 @@ void W6100BusWriteByte_2(uint32_t addr, iodata_t data)
 	(*(volatile uint8_t *)((uint32_t)(addr)) = (data)); 
 }
 
-iodata_t W6100BusReadByte_test(uint32_t addr)
+volatile iodata_t W6100BusReadByte_test(uint32_t addr)
 {
 	iodata_t ret;
- pExt[0] = (addr >> 16) && 0xff;  // A[1:0] = 0
- pExt[1] = (addr >>  8) && 0xff;  // A[1:0] = 1
- pExt[2] = (addr >>  0) && 0xff;     // A[1:0] = 2
+volatile uint8_t* pExt = (volatile uint8_t*)EXT_MEM_BASE;
+ pExt[0] = (addr >> 16) & 0xff;  // A[1:0] = 0
+ pExt[1] = (addr >>  8) & 0xff;  // A[1:0] = 1
+ pExt[2] = (addr >>  0) & 0xff;     // A[1:0] = 2
  ret = pExt[3];
  return ret ;
 }
@@ -277,6 +278,7 @@ iodata_t W6100BusReadByte_test(uint32_t addr)
 iodata_t W6100BusReadburst_test(uint32_t addr, uint32_t len)
 {
 	iodata_t ret;
+volatile uint8_t* pExt = (volatile uint8_t*)EXT_MEM_BASE;
  pExt[0] = (addr >> 16) && 0xff;  // A[1:0] = 0
  pExt[1] = (addr >>  8) && 0xff;  // A[1:0] = 1
  pExt[2] = (addr >>  0) && 0xff;     // A[1:0] = 2
@@ -318,7 +320,7 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   // MX_MDMA_Init();
-
+    MPU_Config_FMC_Region();
    MX_FMC_Init();
     MX_USART2_UART_Init();
   // /MX_SPI2_Init();
@@ -341,7 +343,101 @@ int main(void)
   mode |= HAL_GPIO_ReadPin(MOD3_GPIO_Port, MOD3_Pin) << 3; // MOD3 �???????? (?��?�� 비트)
 
   printf("Hardware Mode Pin set : 0x%02X\r\n", mode);
-#endif
+  printf("W6300 test Program _lihan \r\n");
+  HAL_Delay(1000);
+
+
+  // W6100BusWriteBurst(0x68000000,tAD,3,1);
+  // HAL_Delay(10);
+   volatile uint8_t* add ;  
+    volatile uint8_t* pExt = (volatile uint8_t*)EXT_MEM_BASE;
+    volatile uint8_t* result2 = (volatile uint8_t*)(EXT_MEM_BASE+3);
+  while (0){
+     HAL_SRAM_StateTypeDef state = hsram1.State;
+
+
+    HAL_Delay(10);
+    
+    
+    pExt[0]= 0x00;  // A[1:0] = 0
+    pExt[1]= 0x00;  // A[1:0] = 0
+    pExt[2]= 0x00;  // A[1:0] = 0
+    uint8_t t = pExt[3];
+
+
+    printf("->result = %02x\r\n" , t);
+    printf("->result = %02x\r\n" , t);
+
+    pExt[0]= 0x20;  // A[1:0] = 0
+    pExt[1]= 0x00;  // A[1:0] = 0
+    pExt[2]= 0x00;  // A[1:0] = 0
+     t = pExt[3];
+
+    printf("->result = %02x\r\n" , t);
+    printf("->result = %02x\r\n" , t);
+
+  }
+    iodata_t result ;
+
+
+
+
+printf("read[0] =0x%04x\r\n",W6100BusReadByte_test(0x000000) );
+printf("read[1] =0x%04x\r\n",W6100BusReadByte_test(0x000100) );
+printf("read[2] =0x%04x\r\n",W6100BusReadByte_test(0x000200) );
+printf("read[3] =0x%04x\r\n",W6100BusReadByte_test(0x000300) );
+printf("read[4] =0x%04x\r\n",W6100BusReadByte_test(0x000400) );
+printf("read[5] =0x%04x\r\n",W6100BusReadByte_test(0x000500) );
+
+ W6300CsDisable();
+  W6100BusWriteByte((uint8_t*)0x68000000 , 0x00);
+  W6100BusWriteByte((uint8_t*)0x68000001 , 0x00);
+  W6100BusWriteByte((uint8_t*)0x68000002 , 0x00);
+  printf("w6300 bus test =%02x \r\n",W6100BusReadByte((uint8_t*)0x68000003));
+  printf("w6300 bus test =%02x \r\n",W6100BusReadByte((uint8_t*)0x68000003));
+  printf("w6300 bus test =%02x \r\n",W6100BusReadByte((uint8_t*)0x68000003));
+  printf("w6300 bus test =%02x \r\n",W6100BusReadByte((uint8_t*)0x68000003));
+  printf("w6300 bus test =%02x \r\n",W6100BusReadByte((uint8_t*)0x68000003));
+
+  #if 0
+
+    W6100BusWriteByte(0x68000000 , 0x00);
+    W6100BusWriteByte(0x68000001 , 0x00);
+    W6100BusWriteByte(0x68000002 , 0x00);
+    printf("w6300 bus test =%04x \r\n",W6100BusReadByte(0x68000003));
+
+    W6100BusWriteByte(0x68000000 , 0x00);
+    W6100BusWriteByte(0x68000001 , 0x00);
+    W6100BusWriteByte(0x68000002 , 0x00);
+    printf("w6300 bus test =%02x \r\n",W6100BusReadByte(0x68000003));
+
+#endif 
+  HAL_Delay(10);
+
+// W6100BusReadByte_test(0x00); 
+// W6100BusReadByte_test(0x01); 
+// W6100BusReadByte_test(0x02); 
+
+  //  WIZCHIP.IF.SPI._write_byte_buf(tAD, 3);
+  // W6100BusWriteByte_2(0x68000000 , 0x00);
+  // W6100BusWriteByte_2(0x68000001 , 0x00);
+  // W6100BusWriteByte_2(0x68000002 , 0x00);
+  // result = W6100BusReadByte_2(0x68000003);
+  // printf( "result60 = %02x\r\n " ,result ) ;
+    
+
+printf("read[0] =0x%04x\r\n",W6100BusReadByte_test(0x000000) );
+printf("read[1] =0x%04x\r\n",W6100BusReadByte_test(0x000100) );
+printf("read[2] =0x%04x\r\n",W6100BusReadByte_test(0x000200) );
+printf("read[3] =0x%04x\r\n",W6100BusReadByte_test(0x000300) );
+printf("read[4] =0x%04x\r\n",W6100BusReadByte_test(0x000400) );
+printf("read[5] =0x%04x\r\n",W6100BusReadByte_test(0x000500) );
+
+  while(1){
+
+    HAL_Delay(1000);
+
+  }
 
 #if 1 //Add 2024-09-06
   // delay for w6300 system ready
@@ -594,6 +690,32 @@ static void MX_SPI2_Init(void)
   * @param None
   * @retval None
   */
+void MPU_Config_FMC_Region(void)
+{
+  MPU_Region_InitTypeDef MPU_InitStruct;
+
+  /* MPU 비활성화 */
+  HAL_MPU_Disable();
+
+  /* FMC 메모리 영역(예: Bank3: 0x68000000 ~ 0x6BFFFFFF)의 MPU 설정 */
+  MPU_InitStruct.Enable           = MPU_REGION_ENABLE;
+  MPU_InitStruct.Number           = MPU_REGION_NUMBER0;  // 사용 가능한 MPU 영역 번호 선택 (0~7)
+  MPU_InitStruct.BaseAddress      = 0x68000000;
+  MPU_InitStruct.Size             = MPU_REGION_SIZE_64KB;  // 실제 FMC 영역 크기에 맞춰 조정 (예: 64MB)
+  MPU_InitStruct.AccessPermission = MPU_REGION_FULL_ACCESS;
+  MPU_InitStruct.IsBufferable     = MPU_ACCESS_NOT_BUFFERABLE;
+  MPU_InitStruct.IsCacheable      = MPU_ACCESS_NOT_CACHEABLE;
+  MPU_InitStruct.IsShareable      = MPU_ACCESS_SHAREABLE;
+  MPU_InitStruct.TypeExtField     = MPU_TEX_LEVEL0;        // TEX=0
+  MPU_InitStruct.SubRegionDisable = 0x00;
+  MPU_InitStruct.DisableExec      = MPU_INSTRUCTION_ACCESS_DISABLE; // 필요에 따라
+
+  /* 이 설정은 Strongly Ordered 메모리 타입(비캐시, 비버퍼, 공유)로 설정됩니다 */
+  HAL_MPU_ConfigRegion(&MPU_InitStruct);
+
+  /* MPU 활성화: 기본적으로 Privileged Access Default 설정 사용 */
+  HAL_MPU_Enable(MPU_PRIVILEGED_DEFAULT);
+}
 static void MX_USART2_UART_Init(void)
 {
 
@@ -680,7 +802,7 @@ static void MX_FMC_Init(void)
   hsram1.Init.WaitSignalPolarity = FMC_WAIT_SIGNAL_POLARITY_LOW;
   hsram1.Init.WaitSignalActive = FMC_WAIT_TIMING_BEFORE_WS;
   hsram1.Init.WriteOperation = FMC_WRITE_OPERATION_ENABLE;
-  hsram1.Init.WaitSignal = FMC_WAIT_SIGNAL_DISABLE;
+  hsram1.Init.WaitSignal = FMC_WAIT_SIGNAL_ENABLE;
   hsram1.Init.ExtendedMode = FMC_EXTENDED_MODE_DISABLE;
   hsram1.Init.AsynchronousWait = FMC_ASYNCHRONOUS_WAIT_DISABLE;
   hsram1.Init.WriteBurst = FMC_WRITE_BURST_DISABLE;
@@ -688,6 +810,14 @@ static void MX_FMC_Init(void)
   hsram1.Init.WriteFifo = FMC_WRITE_FIFO_DISABLE;
   hsram1.Init.PageSize = FMC_PAGE_SIZE_NONE;
   /* Timing */
+
+    //   Timing.AddressSetupTime         = 30;  // 예) 3+1=4 사이클 => 20ns (200MHz 기준)
+    // Timing.AddressHoldTime          = 20;  // 예) 2+1=3 사이클 => 15ns
+    // Timing.DataSetupTime            = 90;  // 예) 9+1=10 사이클 => 50ns
+    // Timing.BusTurnAroundDuration    = 10;  // Read→Write 전환 시 여유
+    // Timing.CLKDivision              = 10;  // 비동기 모드면 1로 설정 (동기 모드가 아니라면)
+    // Timing.DataLatency              = 0;  // 비동기 모드면 보통 0
+    //   Timing.AccessMode               = FMC_ACCESS_MODE_A;
   Timing.AddressSetupTime = 4;
   Timing.AddressHoldTime = 15;
   Timing.DataSetupTime = 2;
@@ -788,6 +918,21 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(MOD1_GPIO_Port, &GPIO_InitStruct);
+
+
+  GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;         // AF Push-Pull
+  GPIO_InitStruct.Pull = GPIO_NOPULL;             // Pull-Up/Down 필요 시 수정
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF12_FMC;      // FMC는 보통 AF12 (시리즈마다 다를 수 있음)
+  HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = GPIO_PIN_4 | GPIO_PIN_5;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;         // AF Push-Pull
+  GPIO_InitStruct.Pull = GPIO_NOPULL;             // Pull-Up/Down 필요 시 수정
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF12_FMC;      // FMC는 보통 AF12 (시리즈마다 다를 수 있음)
+  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);

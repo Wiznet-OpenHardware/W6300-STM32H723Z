@@ -274,7 +274,7 @@ typedef   int16_t   datasize_t;     ///< sent or received data size
 #define QSPI_QUAD_MODE              (0x02 << 6)
 
 #if 1
-#define _WIZCHIP_IO_MODE_           _WIZCHIP_IO_MODE_SPI_VDM_
+#define _WIZCHIP_IO_MODE_           _WIZCHIP_IO_MODE_BUS_INDIR_
 #define _WIZCHIP_QSPI_MODE_          QSPI_QUAD_MODE
 
 
@@ -282,7 +282,9 @@ typedef   int16_t   datasize_t;     ///< sent or received data size
 #define QSPI_MODE_SINGLE 	0x00
 #define QSPI_MODE_DUAL		0x01
 #define QSPI_MODE_QUAD 		0x02
-#define QSPI_MODE  QSPI_MODE_SINGLE
+#define BUS_MODE 		      0x04
+
+#define QSPI_MODE  BUS_MODE
 
 #endif 
 
@@ -316,8 +318,8 @@ typedef   int16_t   datasize_t;     ///< sent or received data size
 #if _WIZCHIP_IO_MODE_ & _WIZCHIP_IO_MODE_BUS_
 #if 1
 // 20231108 taylor
-#if (_WIZCHIP_ == W6100)
-#define _WIZCHIP_IO_BASE_            0x60000000   // for W6100-EVB
+#if (_WIZCHIP_ == W6300)
+#define _WIZCHIP_IO_BASE_            0x68000000   // for W6100-EVB
 #elif (_WIZCHIP_ == W5100S)
 #define _WIZCHIP_IO_BASE_            0x60000000   // for W5100S-EVB
 #elif (_WIZCHIP_ == W5300)
@@ -409,8 +411,8 @@ typedef struct __WIZCHIP
          void      (*_write_data)  (uint32_t AddrSel, iodata_t wb);
          #if 1
          // 20231103 taylor
-         void      (*_read_data_buf)  (uint32_t AddrSel, iodata_t* pBuf, int16_t len, uint8_t addrinc);  ///< Read @ref iodata_t as many as <i>len</i> from @ref _WIZCHIP_ through BUS
-         void      (*_write_data_buf) (uint32_t AddrSel, iodata_t* pBuf, int16_t len, uint8_t addrinc);  ///< Write @ref iodata_t data as many as <i>len</i> to @ref _WIZCHIP_ through BUS
+         void      (*_read_data_buf)  (uint32_t AddrSel, iodata_t* pBuf, int16_t len);  ///< Read @ref iodata_t as many as <i>len</i> from @ref _WIZCHIP_ through BUS
+         void      (*_write_data_buf) (uint32_t AddrSel, iodata_t* pBuf, int16_t len);  ///< Write @ref iodata_t data as many as <i>len</i> to @ref _WIZCHIP_ through BUS
          #endif
       }BUS;      
 

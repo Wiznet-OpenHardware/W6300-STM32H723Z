@@ -14,7 +14,7 @@ extern "C" {
 // #include "W6300_TestProcess.h"
 
 OSPI_HandleTypeDef hospi1;
-
+SRAM_HandleTypeDef hsram1;
 
 uint8_t W6300_mode;//0; //W6100 >> 0xFF
 
@@ -33,6 +33,8 @@ uint8_t W6300SpiReadByte(void);
 
 uint8_t qspi_write_buf(uint8_t op_code, uint32_t AddrSel, uint8_t *pbuf, uint16_t len);
 uint8_t qspi_read_buf(uint8_t op_code, uint32_t AddrSel, uint8_t *pbuf, uint16_t len);
+void W6300BusWriteBuf(uint32_t AddrSel, iodata_t *buf, uint32_t len);
+uint16_t W6300BusReadBuf(uint32_t AddrSel, uint8_t* buf, uint32_t len );
 
 // flow Control
 void TRACE_ON(void);

@@ -68,7 +68,7 @@ void W6300Initialze(void)
 {
 	//W6100Reset();
 
-#if _WIZCHIP_IO_MODE_ & _WIZCHIP_IO_MODE_SPI_
+#if _WIZCHIP_IO_MODE_ == _WIZCHIP_IO_MODE_SPI_ //TODO: improve 
 /* SPI method callback registration */
 	#if defined SPI_DMA
 	reg_wizchip_spi_cbfunc(W6300SpiReadByte, W6300SpiWriteByte, W6100SpiReadBurst, W6100SpiWriteBurst);
@@ -90,7 +90,9 @@ void W6300Initialze(void)
 	#if defined BUS_DMA
 	reg_wizchip_bus_cbfunc(W6300BusReadByte, W6300BusWriteByte, W6100BusReadBurst, W6100BusWriteBurst);
 	#else
-	reg_wizchip_bus_cbfunc(W6300BusReadByte, W6300BusWriteByte, 0, 0);
+	reg_wizchip_bus_cbfunc(W6300BusReadByte, W6300BusWriteByte); //TODO: improve
+	reg_wizchip_busbuf_cbfunc(W6300BusReadBuf ,W6300BusWriteBuf );
+	printf("reg_wizchip_bus_cbfunc\r\n"); 
 	#endif
 	//Add 2024-09-09
 	/* CS function register */
@@ -98,8 +100,8 @@ void W6300Initialze(void)
 #endif
 	uint8_t temp;
 //	unsigned char W6300_AdrSet[2][8] = {{2, 2, 2, 2, 2, 2, 2, 2}, {2, 2, 2, 2, 2, 2, 2, 2}};
-//	unsigned char W6300_AdrSet[2][8] = {{4, 4, 4, 4, 4, 4, 4, 4}, {4, 4, 4, 4, 4, 4, 4, 4}};
-	unsigned char W6300_AdrSet[2][8] = {{32, 0, 0, 0, 0, 0, 0, 0}, {32, 0, 0, 0, 0, 0, 0, 0}};
+	unsigned char W6300_AdrSet[2][8] = {{4, 4, 4, 4, 4, 4, 4, 4}, {4, 4, 4, 4, 4, 4, 4, 4}};
+	//unsigned char W6300_AdrSet[2][8] = {{32, 0, 0, 0, 0, 0, 0, 0}, {32, 0, 0, 0, 0, 0, 0, 0}};
 	// unsigned char W6300_AdrSet[2][8] = {{2, 0, 0, 0, 0, 0, 0, 0}, {2, 0, 0, 0, 0, 0, 0, 0}};
 	printf("PHY OK......\r\n");
 
@@ -159,22 +161,125 @@ void FPGA_Reset(void)
 
 void W6300BusWriteByte(uint32_t addr, iodata_t data)
 {
+	#if 0	//teddy 210422
+	(*(volatile uint8_t*)(addr)) = data;
+	#endif
+	if(HAL_SRAM_Write_8b(&hsram1,(uint8_t*)addr, &data, 1) != HAL_OK)
+		printf("BusWritError \r\n");
 }
 
 iodata_t W6300BusReadByte(uint32_t addr)
 {
- 	return 0;
+	#if 0	//teddy 210422
+	return (*((volatile uint8_t*)(addr)));
+	#endif
+	uint16_t result = 0;
+	
+	if(HAL_SRAM_Read_8b(&hsram1,(uint8_t*)addr, &result, 1) != HAL_OK)
+		printf("BussReadError \r\n");
+	return result;
+}
+
+void W6300BusWriteBuf(uint32_t AddrSel, iodata_t *buf, uint32_t len)
+{
+	#if 0	//teddy 210422
+	(*(volatile uint8_t*)(addr)) = data;
+	#endif
+
+  W6300BusWriteByte(0x68000000 , (AddrSel>>16) & 0xff );
+  W6300BusWriteByte(0x68000001 , (AddrSel>>8) & 0xff);
+  W6300BusWriteByte(0x68000002 , (AddrSel>>0) & 0xff);
+
+  while(len-- )
+  {
+	  if(HAL_SRAM_Write_8b(&hsram1,(uint8_t*)0x68000003, buf, 1) != HAL_OK)
+		  printf("BusWritError \r\n");
+    buf+=1; 
+  }
+}
+
+uint16_t W6300BusReadBuf(uint32_t AddrSel, uint8_t* buf, uint32_t len )
+{
+	#if 0	//teddy 210422
+	return (*((volatile uint8_t*)(addr)));
+	#endif
+	uint16_t result = 0;
+
+  W6300BusWriteByte(0x68000000 , (AddrSel>>16) & 0xff );
+  W6300BusWriteByte(0x68000001 , (AddrSel>>8) & 0xff);
+  W6300BusWriteByte(0x68000002 , (AddrSel>>0) & 0xff);
+
+  while(len-- )
+  {
+	  if((result = HAL_SRAM_Read_8b(&hsram1,(uint8_t*)0x68000003, buf, 1)) != HAL_OK)
+		  printf("BussReadError \r\n");
+    buf++;
+  }
+	return result;
 }
 
 
- void W6300SpiWriteByte(uint8_t tx)
- {
- }
+void W6100BusWriteBurst(uint32_t addr, uint8_t* pBuf ,uint32_t len,uint8_t addr_inc)
+{
+#ifdef USE_STDPERIPH_DRIVER
 
- uint8_t W6300SpiReadByte(void)
- {
- 	return 0;
- }
+	if(addr_inc){
+	 	DMA_TX_InitStructure.DMA_MemoryInc  = DMA_MemoryInc_Enable;
+
+	}
+	else 	DMA_TX_InitStructure.DMA_MemoryInc  = DMA_MemoryInc_Disable;
+
+
+	DMA_TX_InitStructure.DMA_BufferSize = len;
+	DMA_TX_InitStructure.DMA_MemoryBaseAddr = addr;
+	DMA_TX_InitStructure.DMA_PeripheralBaseAddr = pBuf;
+
+	DMA_Init(W6100_DMA_CHANNEL_TX, &DMA_TX_InitStructure);
+
+	DMA_Cmd(W6100_DMA_CHANNEL_TX, ENABLE);
+
+	/* Enable SPI Rx/Tx DMA Request*/
+
+	/* Waiting for the end of Data Transfer */
+	while(DMA_GetFlagStatus(DMA_TX_FLAG) == RESET);
+
+	DMA_ClearFlag(DMA_TX_FLAG);
+
+	DMA_Cmd(W6100_DMA_CHANNEL_TX, DISABLE);
+
+#elif defined USE_HAL_DRIVER
+//HAL_SRAM_Write_DMA
+#endif
+
+}
+
+void W6100BusReadBurst(uint32_t addr,uint8_t* pBuf, uint32_t len,uint8_t addr_inc)
+{
+#ifdef USE_STDPERIPH_DRIVER
+
+	DMA_RX_InitStructure.DMA_BufferSize = len;
+	DMA_RX_InitStructure.DMA_MemoryBaseAddr =pBuf;
+	DMA_RX_InitStructure.DMA_PeripheralBaseAddr =addr;
+
+	DMA_Init(W6100_DMA_CHANNEL_RX, &DMA_RX_InitStructure);
+
+	DMA_Cmd(W6100_DMA_CHANNEL_RX, ENABLE);
+	/* Waiting for the end of Data Transfer */
+	while(DMA_GetFlagStatus(DMA_RX_FLAG) == RESET);
+
+
+	DMA_ClearFlag(DMA_RX_FLAG);
+
+
+	DMA_Cmd(W6100_DMA_CHANNEL_RX, DISABLE);
+
+#elif defined USE_HAL_DRIVER
+//HAL_SRAM_Write_DMA
+#endif
+
+	
+
+}
 
 
 

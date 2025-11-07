@@ -34,7 +34,7 @@
 #define _IPERF_SEND_MODE_  1
 #define _IPERF_RECV_MODE_  2 
 
-#define _TESTMODE_ _IPERF_RECV_MODE_ 
+#define _TESTMODE_ _LOOPBACK_MODE_ 
 
 #define TCPS_EN    1
 #define NDA        1
@@ -169,87 +169,7 @@ uint8_t is_testing = 0; // 0 : not testing, 1 : testing
   * @brief  The application entry point.
   * @retval int
   */
-void W6100BusWriteByte(uint8_t* addr, iodata_t data)
-{
-	#if 0	//teddy 210422
-	(*(volatile uint8_t*)(addr)) = data;
-	#endif
-	if(HAL_SRAM_Write_8b(&hsram1,addr, &data, 1) != HAL_OK)
-		printf("BusWritError \r\n");
-}
 
-uint16_t W6100BusReadByte(uint8_t* addr)
-{
-	#if 0	//teddy 210422
-	return (*((volatile uint8_t*)(addr)));
-	#endif
-	uint16_t result = 0;
-	if(HAL_SRAM_Read_8b(&hsram1,addr, &result, 1) != HAL_OK)
-		printf("BussReadError \r\n");
-	return result;
-}
-
-void W6100BusWriteBurst(uint32_t addr, uint8_t* pBuf ,uint32_t len,uint8_t addr_inc)
-{
-#ifdef USE_STDPERIPH_DRIVER
-
-	if(addr_inc){
-	 	DMA_TX_InitStructure.DMA_MemoryInc  = DMA_MemoryInc_Enable;
-
-	}
-	else 	DMA_TX_InitStructure.DMA_MemoryInc  = DMA_MemoryInc_Disable;
-
-
-	DMA_TX_InitStructure.DMA_BufferSize = len;
-	DMA_TX_InitStructure.DMA_MemoryBaseAddr = addr;
-	DMA_TX_InitStructure.DMA_PeripheralBaseAddr = pBuf;
-
-	DMA_Init(W6100_DMA_CHANNEL_TX, &DMA_TX_InitStructure);
-
-	DMA_Cmd(W6100_DMA_CHANNEL_TX, ENABLE);
-
-	/* Enable SPI Rx/Tx DMA Request*/
-
-	/* Waiting for the end of Data Transfer */
-	while(DMA_GetFlagStatus(DMA_TX_FLAG) == RESET);
-
-	DMA_ClearFlag(DMA_TX_FLAG);
-
-	DMA_Cmd(W6100_DMA_CHANNEL_TX, DISABLE);
-
-#elif defined USE_HAL_DRIVER
-
-#endif
-
-}
-
-void W6100BusReadBurst(uint32_t addr,uint8_t* pBuf, uint32_t len,uint8_t addr_inc)
-{
-#ifdef USE_STDPERIPH_DRIVER
-
-	DMA_RX_InitStructure.DMA_BufferSize = len;
-	DMA_RX_InitStructure.DMA_MemoryBaseAddr =pBuf;
-	DMA_RX_InitStructure.DMA_PeripheralBaseAddr =addr;
-
-	DMA_Init(W6100_DMA_CHANNEL_RX, &DMA_RX_InitStructure);
-
-	DMA_Cmd(W6100_DMA_CHANNEL_RX, ENABLE);
-	/* Waiting for the end of Data Transfer */
-	while(DMA_GetFlagStatus(DMA_RX_FLAG) == RESET);
-
-
-	DMA_ClearFlag(DMA_RX_FLAG);
-
-
-	DMA_Cmd(W6100_DMA_CHANNEL_RX, DISABLE);
-
-#elif defined USE_HAL_DRIVER
-
-#endif
-
-	
-
-}
 
 
 #define EXT_MEM_BASE 0x68000000
@@ -319,12 +239,12 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  // MX_MDMA_Init();
-    MPU_Config_FMC_Region();
-   MX_FMC_Init();
-    MX_USART2_UART_Init();
+  MX_MDMA_Init();
+  MPU_Config_FMC_Region();
+  MX_FMC_Init();
+  MX_USART2_UART_Init();
   // /MX_SPI2_Init();
-    HAL_Delay(1000);
+  HAL_Delay(1000);
 
   printf("W6300 test Program V%04d \r\n", RTLVERSiON);
   printf("Compile %s - %s \r\n", __DATE__, __TIME__);
@@ -349,102 +269,26 @@ int main(void)
 
   // W6100BusWriteBurst(0x68000000,tAD,3,1);
   // HAL_Delay(10);
-   volatile uint8_t* add ;  
-    volatile uint8_t* pExt = (volatile uint8_t*)EXT_MEM_BASE;
-    volatile uint8_t* result2 = (volatile uint8_t*)(EXT_MEM_BASE+3);
-  while (0){
-     HAL_SRAM_StateTypeDef state = hsram1.State;
-
-
-    HAL_Delay(10);
-    
-    
-    pExt[0]= 0x00;  // A[1:0] = 0
-    pExt[1]= 0x00;  // A[1:0] = 0
-    pExt[2]= 0x00;  // A[1:0] = 0
-    uint8_t t = pExt[3];
-
-
-    printf("->result = %02x\r\n" , t);
-    printf("->result = %02x\r\n" , t);
-
-    pExt[0]= 0x20;  // A[1:0] = 0
-    pExt[1]= 0x00;  // A[1:0] = 0
-    pExt[2]= 0x00;  // A[1:0] = 0
-     t = pExt[3];
-
-    printf("->result = %02x\r\n" , t);
-    printf("->result = %02x\r\n" , t);
-
-  }
-    iodata_t result ;
-
-
-
-
-printf("read[0] =0x%04x\r\n",W6100BusReadByte_test(0x000000) );
-printf("read[1] =0x%04x\r\n",W6100BusReadByte_test(0x000100) );
-printf("read[2] =0x%04x\r\n",W6100BusReadByte_test(0x000200) );
-printf("read[3] =0x%04x\r\n",W6100BusReadByte_test(0x000300) );
-printf("read[4] =0x%04x\r\n",W6100BusReadByte_test(0x000400) );
-printf("read[5] =0x%04x\r\n",W6100BusReadByte_test(0x000500) );
-
- W6300CsDisable();
-  W6100BusWriteByte((uint8_t*)0x68000000 , 0x00);
-  W6100BusWriteByte((uint8_t*)0x68000001 , 0x00);
-  W6100BusWriteByte((uint8_t*)0x68000002 , 0x00);
-  printf("w6300 bus test =%02x \r\n",W6100BusReadByte((uint8_t*)0x68000003));
-  printf("w6300 bus test =%02x \r\n",W6100BusReadByte((uint8_t*)0x68000003));
-  printf("w6300 bus test =%02x \r\n",W6100BusReadByte((uint8_t*)0x68000003));
-  printf("w6300 bus test =%02x \r\n",W6100BusReadByte((uint8_t*)0x68000003));
-  printf("w6300 bus test =%02x \r\n",W6100BusReadByte((uint8_t*)0x68000003));
-
-  #if 0
-
-    W6100BusWriteByte(0x68000000 , 0x00);
-    W6100BusWriteByte(0x68000001 , 0x00);
-    W6100BusWriteByte(0x68000002 , 0x00);
-    printf("w6300 bus test =%04x \r\n",W6100BusReadByte(0x68000003));
-
-    W6100BusWriteByte(0x68000000 , 0x00);
-    W6100BusWriteByte(0x68000001 , 0x00);
-    W6100BusWriteByte(0x68000002 , 0x00);
-    printf("w6300 bus test =%02x \r\n",W6100BusReadByte(0x68000003));
-
-#endif 
-  HAL_Delay(10);
-
-// W6100BusReadByte_test(0x00); 
-// W6100BusReadByte_test(0x01); 
-// W6100BusReadByte_test(0x02); 
-
-  //  WIZCHIP.IF.SPI._write_byte_buf(tAD, 3);
-  // W6100BusWriteByte_2(0x68000000 , 0x00);
-  // W6100BusWriteByte_2(0x68000001 , 0x00);
-  // W6100BusWriteByte_2(0x68000002 , 0x00);
-  // result = W6100BusReadByte_2(0x68000003);
-  // printf( "result60 = %02x\r\n " ,result ) ;
-    
-
-printf("read[0] =0x%04x\r\n",W6100BusReadByte_test(0x000000) );
-printf("read[1] =0x%04x\r\n",W6100BusReadByte_test(0x000100) );
-printf("read[2] =0x%04x\r\n",W6100BusReadByte_test(0x000200) );
-printf("read[3] =0x%04x\r\n",W6100BusReadByte_test(0x000300) );
-printf("read[4] =0x%04x\r\n",W6100BusReadByte_test(0x000400) );
-printf("read[5] =0x%04x\r\n",W6100BusReadByte_test(0x000500) );
-
-  while(1){
-
-    HAL_Delay(1000);
-
-  }
+  volatile uint8_t* add ;  
+  volatile uint8_t* pExt = (volatile uint8_t*)EXT_MEM_BASE;
+  volatile uint8_t* result2 = (volatile uint8_t*)(EXT_MEM_BASE+3);
 
 #if 1 //Add 2024-09-06
   // delay for w6300 system ready
-  HAL_Delay(1000*3);
+  HAL_Delay(1000*1);
 #endif
 
+	chip_hw_reset();
+  printf("W6300Initialze_start\r\n"); 
+
   W6300Initialze();
+ printf(" _WIZCHIP_IO_MODE_ = %04x // _WIZCHIP_IO_MODE_BUS == %04x",_WIZCHIP_IO_MODE_ ,_WIZCHIP_IO_MODE_BUS_);
+
+  printf("CHIP ID(%04x) = 0x%04x \r\n", _CIDR_, WIZCHIP_READ(000000));
+  printf("CHIP ID(%04x) = 0x%04x \r\n", _CIDR_, getCIDR());
+  printf("VERSION(%04x) = 0x%04x \r\n", _VER_, getVER());
+
+
   //ctlwizchip(CW_SYS_UNLOCK, &syslock);
   printf("W6300Initialze_ok \r\n"); 
   ctlnetwork(CN_SET_NETINFO, &gWIZNETINFO);
@@ -455,7 +299,8 @@ printf("read[5] =0x%04x\r\n",W6100BusReadByte_test(0x000500) );
   
   for (i = 0; i < 8; i++)
   {
-    printf("%d : max size = %d k \r\n", i, getSn_TxMAX(i));
+    printf("%d : txmax size = %d k \r\n", i, getSn_TxMAX(i));
+    printf("%d : rxmax size = %d k \r\n", i, getSn_RxMAX(i));
   }
 
   print_network_information();
@@ -464,16 +309,16 @@ printf("read[5] =0x%04x\r\n",W6100BusReadByte_test(0x000500) );
   printf("\r\n>");
   fflush(stdout);
 
-#if 1
+#if 0
   HAL_RCCEx_GetPLL2ClockFreq(&temp_PLL2_Clk_data);
   printf("QSPI CLK %dMhz \r\n", temp_PLL2_Clk_data.PLL2_R_Frequency / 2 / 1000000);
-  SPI_CLK_SET(45);
+  SPI_CLK_SET(10);
   HAL_RCCEx_GetPLL2ClockFreq(&temp_PLL2_Clk_data);
   printf("QSPI CLK %dMhz \r\n", temp_PLL2_Clk_data.PLL2_R_Frequency / 2 / 1000000);
 #endif 
 
 
-  set_loopback_mode_W6x00(AS_IPV4);
+
 
   printf ( "getSn_TXBUF_SIZE = %d KB \r\n " ,  getSn_TXBUF_SIZE(sn)); 
   if(QSPI_MODE < 0x03)
@@ -486,14 +331,16 @@ printf("read[5] =0x%04x\r\n",W6100BusReadByte_test(0x000500) );
   }
   HAL_RCCEx_GetPLL2ClockFreq(&temp_PLL2_Clk_data);
   printf("QSPI CLK %dMhz \r\n", temp_PLL2_Clk_data.PLL2_R_Frequency / 2 / 1000000);
+  set_loopback_mode_W6x00(AS_IPDUAL);
   printf("IP_mode = %d \r\n", check_loopback_mode_W6x00());
+
 
   while (1)
   {
 
 #if _TESTMODE_ == _LOOPBACK_MODE_
    
-    if ((retval = loopback_tcps(SOCKET, g_udp_buf_main, 5000)) < 0)
+    if ((retval = loopback_tcps(4, g_udp_buf_main, 5080)) < 0)
     {
       printf(" loopback_udps error : %d\n", retval);
       while (1)
@@ -798,14 +645,15 @@ static void MX_FMC_Init(void)
   hsram1.Init.DataAddressMux = FMC_DATA_ADDRESS_MUX_DISABLE;
   hsram1.Init.MemoryType = FMC_MEMORY_TYPE_SRAM;
   hsram1.Init.MemoryDataWidth = FMC_NORSRAM_MEM_BUS_WIDTH_8;
-  hsram1.Init.BurstAccessMode = FMC_BURST_ACCESS_MODE_DISABLE;
+  hsram1.Init.BurstAccessMode = FMC_BURST_ACCESS_MODE_ENABLE;
   hsram1.Init.WaitSignalPolarity = FMC_WAIT_SIGNAL_POLARITY_LOW;
+
   hsram1.Init.WaitSignalActive = FMC_WAIT_TIMING_BEFORE_WS;
   hsram1.Init.WriteOperation = FMC_WRITE_OPERATION_ENABLE;
   hsram1.Init.WaitSignal = FMC_WAIT_SIGNAL_ENABLE;
   hsram1.Init.ExtendedMode = FMC_EXTENDED_MODE_DISABLE;
   hsram1.Init.AsynchronousWait = FMC_ASYNCHRONOUS_WAIT_DISABLE;
-  hsram1.Init.WriteBurst = FMC_WRITE_BURST_DISABLE;
+  hsram1.Init.WriteBurst = FMC_WRITE_BURST_ENABLE;
   hsram1.Init.ContinuousClock = FMC_CONTINUOUS_CLOCK_SYNC_ONLY;
   hsram1.Init.WriteFifo = FMC_WRITE_FIFO_DISABLE;
   hsram1.Init.PageSize = FMC_PAGE_SIZE_NONE;
@@ -823,7 +671,7 @@ static void MX_FMC_Init(void)
   Timing.DataSetupTime = 2;
   Timing.BusTurnAroundDuration = 1;
   Timing.CLKDivision = 16;
-  Timing.DataLatency = 17;
+  Timing.DataLatency = 0;
   Timing.AccessMode = FMC_ACCESS_MODE_A;
   /* ExtTiming */
 

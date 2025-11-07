@@ -50,9 +50,19 @@ extern "C" {
 #define _W6300_SPI_WRITE_                 (0x01 << 5)        ///< SPI interface Write operation in Control Phase
 
 #define WIZCHIP_CREG_BLOCK                (0x00   )       ///< Common register block
-#define WIZCHIP_SREG_BLOCK(N)             ((1+4*N))       ///< SOCKETn register block
+
+#if _WIZCHIP_IO_MODE_ & _WIZCHIP_IO_MODE_BUS_
+// #define WIZCHIP_SREG_BLOCK(N)             ((1+4*N)<<3)       ///< SOCKETn register block 
+// #define WIZCHIP_TXBUF_BLOCK(N)            ((2+4*N)<<3)       ///< SOCKETn Tx buffer address block
+// #define WIZCHIP_RXBUF_BLOCK(N)            ((3+4*N)<<3)       ///< SOCKETn Rx buffer address block
+#define WIZCHIP_SREG_BLOCK(N)             ((N<<4)+(1<<3) )      ///< SOCKETn register block 
+#define WIZCHIP_TXBUF_BLOCK(N)            ((N<<4)+(2<<3) )     ///< SOCKETn Tx buffer address block
+#define WIZCHIP_RXBUF_BLOCK(N)            ((N<<4)+(3<<3) )    ///< SOCKETn Rx buffer address block
+#else
+#define WIZCHIP_SREG_BLOCK(N)             ((1+4*N))       ///< SOCKETn register block 
 #define WIZCHIP_TXBUF_BLOCK(N)            ((2+4*N))       ///< SOCKETn Tx buffer address block
 #define WIZCHIP_RXBUF_BLOCK(N)            ((3+4*N))       ///< SOCKETn Rx buffer address block
+#endif 
 
 #define WIZCHIP_OFFSET_INC(ADDR, N) (ADDR + (N<<8)) ///< Increase offset address
 
@@ -61,7 +71,7 @@ extern "C" {
    #define IDM_AR1                        ((_WIZCHIP_IO_BASE_ + 0x0001))      ///< Indirect Low Address Register
    #define IDM_BSR                        ((_WIZCHIP_IO_BASE_ + 0x0002))      ///< Block Select Register
    #define IDM_DR                         ((_WIZCHIP_IO_BASE_ + 0x0003))      ///< Indirect Data Register
-   #define _W6300_IO_BASE_       _WIZCHIP_IO_BASE_
+   #define _W6300_IO_BASE_       0x00000000
 #elif (_WIZCHIP_IO_MODE_ & _WIZCHIP_IO_MODE_SPI_)
 #define IDM_AR0                        ((_WIZCHIP_IO_BASE_ + 0x0000))      ///< Indirect High Address Register
 #define IDM_AR1                        ((_WIZCHIP_IO_BASE_ + 0x0001))      ///< Indirect Low Address Register

@@ -60,15 +60,17 @@ void WIZCHIP_WRITE(uint32_t AddrSel, uint8_t wb )
 
 	uint8_t opcode = 0;
 	uint16_t ADDR = 0;
-
-   if(W6300_IF_MODE == 0x04)
-   {
+   if(_WIZCHIP_IO_MODE_ & _WIZCHIP_IO_MODE_BUS_)
+   {  
       uint8_t tAD[4];
       tAD[0] = (uint8_t)((AddrSel & 0x00FF0000) >> 16);
       tAD[1] = (uint8_t)((AddrSel & 0x0000FF00) >> 8);
       tAD[2] = (uint8_t)(AddrSel & 0x000000ff);
       tAD[3] = wb;
-      WIZCHIP.IF.BUS._write_data_buf(IDM_AR0, tAD, 4, 1);
+      WIZCHIP.IF.BUS._write_data(IDM_AR0, tAD[0]);
+      WIZCHIP.IF.BUS._write_data(IDM_AR1, tAD[1]);
+      WIZCHIP.IF.BUS._write_data(IDM_BSR, tAD[2]);
+      WIZCHIP.IF.BUS._write_data(IDM_DR, tAD[3]);
    }
    else //w6300 QSPI MODE
    {
@@ -76,6 +78,8 @@ void WIZCHIP_WRITE(uint32_t AddrSel, uint8_t wb )
       ADDR = (uint16_t)((AddrSel & 0x00ffff00) >> 8 );
       WIZCHIP.IF.QSPI._write_qspi(opcode, ADDR, &wb, 1);
    }
+
+
 }
 
 uint8_t  WIZCHIP_READ(uint32_t AddrSel)
@@ -85,14 +89,22 @@ uint8_t  WIZCHIP_READ(uint32_t AddrSel)
 	uint8_t opcode = 0;
 	uint16_t ADDR = 0;
 
-   if(W6300_IF_MODE == 0x04)
+   if(_WIZCHIP_IO_MODE_ & _WIZCHIP_IO_MODE_BUS_)
    {
       uint8_t tAD[3];
+
       tAD[0] = (uint8_t)((AddrSel & 0x00FF0000) >> 16);
       tAD[1] = (uint8_t)((AddrSel & 0x0000FF00) >> 8);
       tAD[2] = (uint8_t)(AddrSel & 0x000000ff);
-      WIZCHIP.IF.BUS._write_data_buf(IDM_AR0,tAD,3,1);
-      ret[0] = WIZCHIP.IF.BUS._read_data(IDM_DR);
+      // WIZCHIP.IF.BUS._write_data(IDM_AR0, tAD[0]);
+      // WIZCHIP.IF.BUS._write_data(IDM_AR1, tAD[1]);
+      // WIZCHIP.IF.BUS._write_data(IDM_BSR, tAD[2]);
+      // ret[0] = WIZCHIP.IF.BUS._read_data(IDM_DR);
+
+      W6300BusWriteByte(IDM_AR0, tAD[0]);
+      W6300BusWriteByte(IDM_AR1, tAD[1]);
+      W6300BusWriteByte(IDM_BSR, tAD[2]);
+     ret[0] =  W6300BusReadByte( IDM_DR);
    }
    else
    {
@@ -111,12 +123,12 @@ void WIZCHIP_WRITE_BUF(uint32_t AddrSel, uint8_t* pBuf, datasize_t len)
 	uint16_t ADDR = 0;
    if(W6300_IF_MODE == 0x04)
    {
-      uint8_t tAD[3];
-      tAD[0] = (uint8_t)((AddrSel & 0x00FF0000) >> 16);
-      tAD[1] = (uint8_t)((AddrSel & 0x0000FF00) >> 8);
-      tAD[2] = (uint8_t)(AddrSel & 0x000000ff);
-      WIZCHIP.IF.BUS._write_data_buf(IDM_AR0,tAD, 3, 1);
-      WIZCHIP.IF.BUS._write_data_buf(IDM_DR,pBuf,len, 0);
+      // uint8_t tAD[3];
+      // tAD[0] = (uint8_t)((AddrSel & 0x00FF0000) >> 16);
+      // tAD[1] = (uint8_t)((AddrSel & 0x0000FF00) >> 8);
+      // tAD[2] = (uint8_t)(AddrSel & 0x000000ff);
+      
+      WIZCHIP.IF.BUS._write_data_buf(AddrSel,pBuf,len);
    }
    else
    {
@@ -136,12 +148,11 @@ void WIZCHIP_READ_BUF (uint32_t AddrSel, uint8_t* pBuf, datasize_t len)
 
    if(W6300_IF_MODE == 0x04)
    {
-      uint8_t tAD[3];
-      tAD[0] = (uint8_t)((AddrSel & 0x00FF0000) >> 16);
-      tAD[1] = (uint8_t)((AddrSel & 0x0000FF00) >> 8);
-      tAD[2] = (uint8_t)(AddrSel & 0x000000ff);
-      WIZCHIP.IF.BUS._write_data_buf(IDM_AR0,tAD,3,1);
-      WIZCHIP.IF.BUS._read_data_buf(IDM_DR,pBuf,len,0);
+      // uint8_t tAD[3];
+      // tAD[0] = (uint8_t)((AddrSel & 0x00FF0000) >> 16);
+      // tAD[1] = (uint8_t)((AddrSel & 0x0000FF00) >> 8);
+      // tAD[2] = (uint8_t)(AddrSel & 0x000000ff);
+      WIZCHIP.IF.BUS._read_data_buf(AddrSel,pBuf,len);
    }
    else
    {

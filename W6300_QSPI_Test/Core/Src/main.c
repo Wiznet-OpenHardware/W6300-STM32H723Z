@@ -55,6 +55,25 @@ PLL2_ClocksTypeDef temp_PLL2_Clk_data;
 //#define FPGA_USED
 #endif
 
+UART_HandleTypeDef huart3;   // ← 추가 (huart2는 아래 Private variables 섹션에 선언됨)
+
+
+static void MX_USART3_UART_Init(void)
+{
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 115200;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_TX_RX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart3.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart3.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+  huart3.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart3) != HAL_OK) { Error_Handler(); }
+}
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -82,6 +101,11 @@ UART_HandleTypeDef huart2;
 SRAM_HandleTypeDef hsram1;
 
 /* USER CODE BEGIN PV */
+//int __io_putchar(int ch)
+//{
+//    HAL_UART_Transmit(&huart2, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
+//    return ch;
+//}
 //uint8_t W6300_mode = QSPI_MODE;//0; //W6100 >> 0xFF
 wiz_NetInfo gWIZNETINFO = {.mac = {0x00, 0x08, 0xdc, 0xa3, 0xb4, 0xc5},
                            .ip = {192, 168, 11, 44},
@@ -246,6 +270,19 @@ int main(void)
   // /MX_SPI2_Init();
   HAL_Delay(1000);
 
+//  MX_USART2_UART_Init();
+  MX_USART3_UART_Init();   // ← 추가
+
+  // 클럭 검증용: HSE_VALUE를 8MHz로 맞춘 뒤 아래가 480000000 / 120000000 으로 떠야 정상.
+  // 깨져 나오면 HSE_VALUE(stm32h7xx_hal_conf.h) 와 실제 HSE가 안 맞는 것.
+  printf("SYSCLK=%lu  PCLK1(USART3)=%lu\r\n",
+         HAL_RCC_GetSysClockFreq(), HAL_RCC_GetPCLK1Freq());
+
+  // while (1)
+  // {
+  //   printf("alive %d\r\n", i++);
+  //   HAL_Delay(500);
+  // }
   printf("W6300 test Program V%04d \r\n", RTLVERSiON);
   printf("Compile %s - %s \r\n", __DATE__, __TIME__);
   HAL_UART_Receive_IT(&huart2, &rxData, 1);
@@ -386,6 +423,7 @@ int main(void)
 }
 
 // week_Function Redefined
+#if 0
 int _write(int fd, char *str, int len) 
 {
 
@@ -395,6 +433,15 @@ int _write(int fd, char *str, int len)
   }
   return len; //
 }
+#else
+int _write(int fd, char *str, int len)
+{
+  for (int i = 0; i < len; i++)
+    HAL_UART_Transmit(&huart3, (uint8_t *)&str[i], 1, 0xFFFF);  // huart2 → huart3
+  return len;
+}
+#endif
+
 
 /**
   * @brief System Clock Configuration
@@ -419,6 +466,7 @@ void SystemClock_Config(void)
   * in the RCC_OscInitTypeDef structure.
   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+#if 0
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
@@ -429,6 +477,20 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLR = 2;
   RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_3;
   RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1VCOWIDE;
+#else
+
+  RCC_OscInitStruct.HSEState = RCC_HSE_BYPASS;
+    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+    RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+    RCC_OscInitStruct.PLL.PLLM = 1;                // 8/1 = 8MHz (PLL 입력)
+    RCC_OscInitStruct.PLL.PLLN = 60;               // 8*60 = 480MHz (VCO) ← 836 이하 ✓
+    RCC_OscInitStruct.PLL.PLLP = 1;                // 480MHz SYSCLK
+    RCC_OscInitStruct.PLL.PLLQ = 2;
+    RCC_OscInitStruct.PLL.PLLR = 2;
+    RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_3;  // 입력 8MHz → RANGE_3 (8~16MHz) ✓
+    RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1VCOWIDE;  // 480 ∈ [192,836] ✓
+#endif
+
   RCC_OscInitStruct.PLL.PLLFRACN = 0;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -785,6 +847,16 @@ static void MX_GPIO_Init(void)
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI3_IRQn);
+
+
+  /* USART3: PD8=TX, PD9=RX */
+  __HAL_RCC_USART3_CLK_ENABLE();
+  GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF7_USART3;
+  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */

@@ -107,7 +107,7 @@
   *        (when HSE is used as system clock source, directly or through the PLL).
   */
 #if !defined  (HSE_VALUE)
-#define HSE_VALUE    (25000000UL) /*!< Value of the External oscillator in Hz : FPGA case fixed to 60MHZ */
+#define HSE_VALUE    (8000000UL) /*!< NUCLEO-H723ZG: ST-LINK MCO 8MHz (HSE Bypass). 커스텀 보드는 25MHz. HAL 클럭/UART 보드율 계산이 이 값을 사용하므로 실제 HSE와 반드시 일치해야 함 */
 #endif /* HSE_VALUE */
 
 #if !defined  (HSE_STARTUP_TIMEOUT)

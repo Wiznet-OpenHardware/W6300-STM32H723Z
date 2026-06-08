@@ -274,7 +274,7 @@ typedef   int16_t   datasize_t;     ///< sent or received data size
 #define QSPI_QUAD_MODE              (0x02 << 6)
 
 #if 1
-#define _WIZCHIP_IO_MODE_           _WIZCHIP_IO_MODE_BUS_INDIR_
+/* _WIZCHIP_IO_MODE_ 는 아래 QSPI_MODE 스위치에 따라 자동 결정됨 (BUS↔QSPI 단일 토글) */
 #define _WIZCHIP_QSPI_MODE_          QSPI_QUAD_MODE
 
 
@@ -284,9 +284,18 @@ typedef   int16_t   datasize_t;     ///< sent or received data size
 #define QSPI_MODE_QUAD 		0x02
 #define BUS_MODE 		      0x04
 
+/* ★ 인터페이스 선택: 이 한 줄만 바꾸면 BUS↔QSPI 전환 (BUS면 QSPI OFF / QSPI면 BUS OFF) */
+/*   QSPI: QSPI_MODE_QUAD / QSPI_MODE_DUAL / QSPI_MODE_SINGLE   |   BUS: BUS_MODE          */
 #define QSPI_MODE  BUS_MODE
 
-#endif 
+/* QSPI_MODE 에 따라 _WIZCHIP_IO_MODE_ 자동 결정 — 콜백 등록/READ·WRITE 매크로 분기 기준 */
+#if (QSPI_MODE == BUS_MODE)
+#define _WIZCHIP_IO_MODE_           _WIZCHIP_IO_MODE_BUS_INDIR_
+#else
+#define _WIZCHIP_IO_MODE_           _WIZCHIP_IO_MODE_SPI_
+#endif
+
+#endif
 
 #elif 0
 #define _WIZCHIP_IO_MODE_         _WIZCHIP_IO_MODE_SPI_VDM_

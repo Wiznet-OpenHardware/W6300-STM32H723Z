@@ -264,8 +264,12 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_MDMA_Init();
-  MPU_Config_FMC_Region();
+#if (QSPI_MODE == BUS_MODE)
+  MPU_Config_FMC_Region();   // BUS 모드: FMC 사용 (QSPI OFF)
   MX_FMC_Init();
+#else
+  MX_OCTOSPI1_Init();        // QSPI 모드: OCTOSPI 사용 (FMC OFF)
+#endif
   MX_USART2_UART_Init();
   // /MX_SPI2_Init();
   HAL_Delay(1000);
@@ -546,6 +550,60 @@ void PeriphCommonClock_Config(void)
   * @param None
   * @retval None
   */
+static void MX_OCTOSPI1_Init(void)
+{
+
+  /* USER CODE BEGIN OCTOSPI1_Init 0 */
+
+  /* USER CODE END OCTOSPI1_Init 0 */
+
+  OSPIM_CfgTypeDef sOspiManagerCfg = {0};
+
+  /* USER CODE BEGIN OCTOSPI1_Init 1 */
+
+  /* USER CODE END OCTOSPI1_Init 1 */
+  /* OCTOSPI1 parameter configuration*/
+  hospi1.Instance = OCTOSPI1;
+  hospi1.Init.FifoThreshold = 1;
+  hospi1.Init.DualQuad = HAL_OSPI_DUALQUAD_DISABLE;
+  hospi1.Init.MemoryType = HAL_OSPI_MEMTYPE_MICRON;
+  hospi1.Init.DeviceSize = 17;
+  hospi1.Init.ChipSelectHighTime = 1;
+  hospi1.Init.FreeRunningClock = HAL_OSPI_FREERUNCLK_DISABLE;
+  hospi1.Init.ClockMode = HAL_OSPI_CLOCK_MODE_3;
+  hospi1.Init.WrapSize = HAL_OSPI_WRAP_NOT_SUPPORTED;
+  hospi1.Init.ClockPrescaler = 2;
+
+  #if 1
+  hospi1.Init.SampleShifting = HAL_OSPI_SAMPLE_SHIFTING_NONE;
+  hospi1.Init.DelayHoldQuarterCycle = HAL_OSPI_DHQC_DISABLE;
+  #else //by_lihan for TEST
+  hospi1.Init.SampleShifting = HAL_OSPI_SAMPLE_SHIFTING_HALFCYCLE ;
+  //hospi1.Init.SampleShifting = HAL_OSPI_SAMPLE_SHIFTING_NONE;
+  hospi1.Init.DelayHoldQuarterCycle = HAL_OSPI_DHQC_DISABLE;
+  //hospi1.Init.DelayHoldQuarterCycle = HAL_OSPI_DHQC_ENABLE;
+  #endif
+
+  hospi1.Init.ChipSelectBoundary = 0;
+  hospi1.Init.DelayBlockBypass = HAL_OSPI_DELAY_BLOCK_BYPASSED;
+  hospi1.Init.MaxTran = 0;
+  hospi1.Init.Refresh = 0;
+  if (HAL_OSPI_Init(&hospi1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sOspiManagerCfg.ClkPort = 1;
+  sOspiManagerCfg.NCSPort = 1;
+  sOspiManagerCfg.IOLowPort = HAL_OSPIM_IOPORT_1_LOW;
+  if (HAL_OSPIM_Config(&hospi1, &sOspiManagerCfg, HAL_OSPI_TIMEOUT_DEFAULT_VALUE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN OCTOSPI1_Init 2 */
+
+  /* USER CODE END OCTOSPI1_Init 2 */
+
+}
 
 /**
   * @brief SPI2 Initialization Function
@@ -830,6 +888,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(MOD1_GPIO_Port, &GPIO_InitStruct);
 
 
+#if (QSPI_MODE == BUS_MODE)
+  /* BUS 모드에서만 FMC 핀 설정 (PF0/PF1=A0/A1, PD4/PD5=NOE/NWE).
+     QSPI 모드에선 이 핀들이 W6300 QD0~3과 같은 칩 핀이라, 설정하면 OCTOSPI와 충돌.
+     → QSPI 땐 High-Z 유지 위해 설정하지 않음. */
   GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;         // AF Push-Pull
   GPIO_InitStruct.Pull = GPIO_NOPULL;             // Pull-Up/Down 필요 시 수정
@@ -843,6 +905,7 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   GPIO_InitStruct.Alternate = GPIO_AF12_FMC;      // FMC는 보통 AF12 (시리즈마다 다를 수 있음)
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+#endif
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);

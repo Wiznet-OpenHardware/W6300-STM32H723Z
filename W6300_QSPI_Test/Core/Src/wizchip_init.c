@@ -103,6 +103,11 @@ void W6300Initialze(void)
 	unsigned char W6300_AdrSet[2][8] = {{4, 4, 4, 4, 4, 4, 4, 4}, {4, 4, 4, 4, 4, 4, 4, 4}};
 	//unsigned char W6300_AdrSet[2][8] = {{32, 0, 0, 0, 0, 0, 0, 0}, {32, 0, 0, 0, 0, 0, 0, 0}};
 	// unsigned char W6300_AdrSet[2][8] = {{2, 0, 0, 0, 0, 0, 0, 0}, {2, 0, 0, 0, 0, 0, 0, 0}};
+	/* === QSPI 통신 점검 (임시) — PHY 링크 대기 전에 칩 ID/버전부터 읽어봄 ===
+	   고정값(0x6300류)이 뜨면 QSPI 통신 OK → 멈춤은 PHY 링크(케이블) 문제.
+	   0x0000/쓰레기면 QSPI 통신 실패 → W6300 MODE 스트랩(QSPI=Low)/배선 확인. */
+	printf(">>> QSPI CHECK: CIDR=0x%04x  VER=0x%04x\r\n", getCIDR(), getVER());
+
 	printf("PHY OK......\r\n");
 
     do
@@ -579,6 +584,11 @@ void W6300CsDisable(void)
 	//HAL_GPIO_WritePin(CS_GPIO_Port, CS_Pin, GPIO_PIN_SET);
 
 }
+
+/* 단일 SPI 바이트 전송 콜백 — QUAD QSPI 모드에선 실제로 안 쓰이지만,
+   reg_wizchip_spi_cbfunc()가 함수 주소를 참조하므로 정의가 있어야 링크됨(빈 스텁). */
+void W6300SpiWriteByte(uint8_t tx) { (void)tx; }
+uint8_t W6300SpiReadByte(void) { return 0; }
 #if 0 
  char qspi_set_parameter(QSPI_Set_Data *init_data)
  {

@@ -117,6 +117,16 @@ void HAL_OSPI_MspInit(OSPI_HandleTypeDef* hospi)
     GPIO_InitStruct.Alternate = GPIO_AF9_OCTOSPIM_P1;
     HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
 
+    /* PG6 ------> OCTOSPIM_P1_NCS (W6300 칩셀렉트 / QSPI 하드웨어 NCS).
+       BUS 모드의 FMC_NE3와 같은 물리 핀 — 모드에 따라 AF만 다름(QSPI=AF10, BUS=AF12). */
+    __HAL_RCC_GPIOG_CLK_ENABLE();
+    GPIO_InitStruct.Pin = GPIO_PIN_6;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    GPIO_InitStruct.Alternate = GPIO_AF10_OCTOSPIM_P1;
+    HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
+
     /* OCTOSPI1 MDMA Init */
     /* OCTOSPI1_FIFO_TH Init */
     hmdma_octospi1_fifo_th.Instance = MDMA_Channel0;

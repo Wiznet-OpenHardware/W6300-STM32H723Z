@@ -51,18 +51,12 @@ extern "C" {
 
 #define WIZCHIP_CREG_BLOCK                (0x00   )       ///< Common register block
 
-#if _WIZCHIP_IO_MODE_ & _WIZCHIP_IO_MODE_BUS_
-// #define WIZCHIP_SREG_BLOCK(N)             ((1+4*N)<<3)       ///< SOCKETn register block 
-// #define WIZCHIP_TXBUF_BLOCK(N)            ((2+4*N)<<3)       ///< SOCKETn Tx buffer address block
-// #define WIZCHIP_RXBUF_BLOCK(N)            ((3+4*N)<<3)       ///< SOCKETn Rx buffer address block
-#define WIZCHIP_SREG_BLOCK(N)             ((N<<4)+(1<<3) )      ///< SOCKETn register block 
-#define WIZCHIP_TXBUF_BLOCK(N)            ((N<<4)+(2<<3) )     ///< SOCKETn Tx buffer address block
-#define WIZCHIP_RXBUF_BLOCK(N)            ((N<<4)+(3<<3) )    ///< SOCKETn Rx buffer address block
-#else
-#define WIZCHIP_SREG_BLOCK(N)             ((1+4*N))       ///< SOCKETn register block 
-#define WIZCHIP_TXBUF_BLOCK(N)            ((2+4*N))       ///< SOCKETn Tx buffer address block
-#define WIZCHIP_RXBUF_BLOCK(N)            ((3+4*N))       ///< SOCKETn Rx buffer address block
-#endif 
+/* 런타임 듀얼모드: 소켓 블록 인코딩이 BUS(0x04)와 SPI/QSPI가 다름 →
+   컴파일타임 #if 대신 런타임 변수 W6300_IF_MODE 로 분기. (W6300_IF_MODE 정의는 w6300.c) */
+extern uint8_t W6300_IF_MODE;
+#define WIZCHIP_SREG_BLOCK(N)   ((W6300_IF_MODE==0x04) ? (((N)<<4)+(1<<3)) : (1+4*(N)))   ///< SOCKETn register block
+#define WIZCHIP_TXBUF_BLOCK(N)  ((W6300_IF_MODE==0x04) ? (((N)<<4)+(2<<3)) : (2+4*(N)))   ///< SOCKETn Tx buffer address block
+#define WIZCHIP_RXBUF_BLOCK(N)  ((W6300_IF_MODE==0x04) ? (((N)<<4)+(3<<3)) : (3+4*(N)))   ///< SOCKETn Rx buffer address block
 
 #define WIZCHIP_OFFSET_INC(ADDR, N) (ADDR + (N<<8)) ///< Increase offset address
 

@@ -108,7 +108,7 @@ SRAM_HandleTypeDef hsram1;
 //}
 //uint8_t W6300_mode = QSPI_MODE;//0; //W6100 >> 0xFF
 wiz_NetInfo gWIZNETINFO = {.mac = {0x00, 0x08, 0xdc, 0xa3, 0xb4, 0xc5},
-                           .ip = {192, 168, 11, 44},
+                           .ip = {192, 168, 11, 99},
                            .sn = {255, 255, 255, 0},
                            .gw = {192, 168, 11, 1},
                            .dns = {8, 8, 8, 8},
@@ -198,6 +198,14 @@ uint8_t is_testing = 0; // 0 : not testing, 1 : testing
 
 #define EXT_MEM_BASE 0x68000000
 
+/* ===== 런타임 인터페이스 모드 선택용 strap 핀 =====
+   부팅 때 이 핀을 읽어 BUS/QSPI를 자동 선택. HIGH=BUS, LOW=QSPI(Quad). 기본(풀다운)=QSPI.
+   ※ WIZ630MJ 점퍼와 같은 모드가 되도록 strap을 맞출 것.
+   ※ 다른 핀으로 바꾸려면 아래 3줄만 수정. */
+#define IFMODE_STRAP_PORT      GPIOC
+#define IFMODE_STRAP_PIN       GPIO_PIN_0
+#define IFMODE_STRAP_CLK_EN()  __HAL_RCC_GPIOC_CLK_ENABLE()
+
 void W6100BusWriteByte_2(uint32_t addr, iodata_t data)
 {
 volatile uint8_t* pExt = (volatile uint8_t*)EXT_MEM_BASE;
@@ -261,15 +269,30 @@ int main(void)
   /* Configure the peripherals common clocks */
   PeriphCommonClock_Config();
 
+  /* === 런타임 인터페이스 모드 선택 (strap 핀) ===
+     strap 읽어 W6300_IF_MODE 결정. HIGH=BUS, LOW=QSPI(Quad). 기본(풀다운)=QSPI.
+     MX_GPIO_Init / 페리페럴 init 보다 먼저 정해야 그쪽이 모드대로 갈림. */
+  IFMODE_STRAP_CLK_EN();
+  {
+    GPIO_InitTypeDef sgp = {0};
+    sgp.Pin  = IFMODE_STRAP_PIN;
+    sgp.Mode = GPIO_MODE_INPUT;
+    sgp.Pull = GPIO_PULLDOWN;
+    HAL_GPIO_Init(IFMODE_STRAP_PORT, &sgp);
+  }
+  W6300_IF_MODE = (HAL_GPIO_ReadPin(IFMODE_STRAP_PORT, IFMODE_STRAP_PIN) == GPIO_PIN_SET)
+                  ? BUS_MODE : QSPI_MODE_QUAD;
+  W6300_mode = W6300_IF_MODE;
+
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_MDMA_Init();
-#if (QSPI_MODE == BUS_MODE)
-  MPU_Config_FMC_Region();   // BUS 모드: FMC 사용 (QSPI OFF)
-  MX_FMC_Init();
-#else
-  MX_OCTOSPI1_Init();        // QSPI 모드: OCTOSPI 사용 (FMC OFF)
-#endif
+  if (W6300_IF_MODE == BUS_MODE) {
+    MPU_Config_FMC_Region();   // BUS: FMC 사용 (OCTOSPI OFF)
+    MX_FMC_Init();
+  } else {
+    MX_OCTOSPI1_Init();        // QSPI: OCTOSPI 사용 (FMC OFF)
+  }
   MX_USART2_UART_Init();
   // /MX_SPI2_Init();
   HAL_Delay(1000);
@@ -281,6 +304,11 @@ int main(void)
   // 깨져 나오면 HSE_VALUE(stm32h7xx_hal_conf.h) 와 실제 HSE가 안 맞는 것.
   printf("SYSCLK=%lu  PCLK1(USART3)=%lu\r\n",
          HAL_RCC_GetSysClockFreq(), HAL_RCC_GetPCLK1Freq());
+
+  /* 현재 인터페이스 모드 — strap 핀으로 결정된 런타임 값 */
+  printf("==== Interface Mode = %s  (IF_MODE=0x%02X) ====\r\n",
+         (W6300_IF_MODE == BUS_MODE) ? "BUS (8-bit FMC)" : "QSPI (Quad)",
+         W6300_IF_MODE);
 
   // while (1)
   // {
@@ -362,13 +390,13 @@ int main(void)
 
 
   printf ( "getSn_TXBUF_SIZE = %d KB \r\n " ,  getSn_TXBUF_SIZE(sn)); 
-  if(QSPI_MODE < 0x03)
+  if(W6300_IF_MODE < 0x03)
   {
-    printf("Software Mode set : QSPI %s\r\n",mode_char[QSPI_MODE]);
+    printf("Software Mode set : QSPI %s\r\n",mode_char[W6300_IF_MODE]);
   }
   else
   {
-    printf("Software Mode set : BUS %02x \r\n", QSPI_MODE);
+    printf("Software Mode set : BUS %02x \r\n", W6300_IF_MODE);
   }
   HAL_RCCEx_GetPLL2ClockFreq(&temp_PLL2_Clk_data);
   printf("QSPI CLK %dMhz \r\n", temp_PLL2_Clk_data.PLL2_R_Frequency / 2 / 1000000);
@@ -888,8 +916,9 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(MOD1_GPIO_Port, &GPIO_InitStruct);
 
 
-#if (QSPI_MODE == BUS_MODE)
-  /* BUS 모드에서만 FMC 핀 설정 (PF0/PF1=A0/A1, PD4/PD5=NOE/NWE).
+  if (W6300_IF_MODE == BUS_MODE)   /* BUS 모드에서만 FMC 핀 설정 (런타임 분기) */
+  {
+  /* PF0/PF1=A0/A1, PD4/PD5=NOE/NWE.
      QSPI 모드에선 이 핀들이 W6300 QD0~3과 같은 칩 핀이라, 설정하면 OCTOSPI와 충돌.
      → QSPI 땐 High-Z 유지 위해 설정하지 않음. */
   GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1;
@@ -905,7 +934,7 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   GPIO_InitStruct.Alternate = GPIO_AF12_FMC;      // FMC는 보통 AF12 (시리즈마다 다를 수 있음)
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
-#endif
+  }
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);

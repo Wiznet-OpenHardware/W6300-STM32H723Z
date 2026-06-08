@@ -284,16 +284,18 @@ typedef   int16_t   datasize_t;     ///< sent or received data size
 #define QSPI_MODE_QUAD 		0x02
 #define BUS_MODE 		      0x04
 
-/* ★ 인터페이스 선택: 이 한 줄만 바꾸면 BUS↔QSPI 전환 (BUS면 QSPI OFF / QSPI면 BUS OFF) */
-/*   QSPI: QSPI_MODE_QUAD / QSPI_MODE_DUAL / QSPI_MODE_SINGLE   |   BUS: BUS_MODE          */
-#define QSPI_MODE  BUS_MODE
+/* ★ QSPI 서브모드 (라인 수). 런타임 듀얼모드에선 BUS/QSPI 선택은 strap(W6300_IF_MODE)이 하고,
+   이 값은 "QSPI일 때 몇 라인이냐"만 정함 → qspi_read_buf/qspi_write_buf 의 #if 분기 기준.
+   QSPI 쓸 거면 반드시 QSPI_MODE_QUAD(또는 _DUAL/_SINGLE). BUS_MODE로 두면 qspi가 single로
+   컴파일돼서 op_code(quad)와 안 맞아 QSPI가 0x0000으로 깨짐. */
+#define QSPI_MODE  QSPI_MODE_QUAD
 
-/* QSPI_MODE 에 따라 _WIZCHIP_IO_MODE_ 자동 결정 — 콜백 등록/READ·WRITE 매크로 분기 기준 */
-#if (QSPI_MODE == BUS_MODE)
+/* 런타임 듀얼모드: _WIZCHIP_IO_MODE_ 는 항상 BUS_INDIR 로 고정한다.
+   이유: _WIZCHIP_IO_BASE_(=0x68000000, BUS FMC 베이스)가 아래 "#if _WIZCHIP_IO_MODE_ & _WIZCHIP_IO_MODE_BUS_"
+         에 의존함. SPI로 두면 _WIZCHIP_IO_BASE_=0 이 되어 BUS의 IDM 주소가 0이 되고 BUS가 깨짐.
+   QSPI 경로는 _WIZCHIP_IO_BASE_/IDM 을 안 쓰고 op_code+OCTOSPI로 동작하므로 BUS_INDIR여도 무방.
+   실제 BUS/QSPI 선택은 런타임 W6300_IF_MODE(strap), QSPI 라인수는 위의 QSPI_MODE 가 담당. */
 #define _WIZCHIP_IO_MODE_           _WIZCHIP_IO_MODE_BUS_INDIR_
-#else
-#define _WIZCHIP_IO_MODE_           _WIZCHIP_IO_MODE_SPI_
-#endif
 
 #endif
 

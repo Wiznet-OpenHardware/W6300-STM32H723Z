@@ -60,7 +60,7 @@ void WIZCHIP_WRITE(uint32_t AddrSel, uint8_t wb )
 
 	uint8_t opcode = 0;
 	uint16_t ADDR = 0;
-   if(_WIZCHIP_IO_MODE_ & _WIZCHIP_IO_MODE_BUS_)
+   if(W6300_IF_MODE == 0x04)   // 0x04 = BUS_MODE (런타임 분기; BUF 함수와 동일 기준)
    {  
       uint8_t tAD[4];
       tAD[0] = (uint8_t)((AddrSel & 0x00FF0000) >> 16);
@@ -89,7 +89,7 @@ uint8_t  WIZCHIP_READ(uint32_t AddrSel)
 	uint8_t opcode = 0;
 	uint16_t ADDR = 0;
 
-   if(_WIZCHIP_IO_MODE_ & _WIZCHIP_IO_MODE_BUS_)
+   if(W6300_IF_MODE == 0x04)   // 0x04 = BUS_MODE (런타임 분기; BUF 함수와 동일 기준)
    {
       uint8_t tAD[3];
 

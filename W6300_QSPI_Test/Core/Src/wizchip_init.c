@@ -68,36 +68,24 @@ void W6300Initialze(void)
 {
 	//W6100Reset();
 
-#if _WIZCHIP_IO_MODE_ == _WIZCHIP_IO_MODE_SPI_ //TODO: improve 
-/* SPI method callback registration */
-	#if defined SPI_DMA
-	reg_wizchip_spi_cbfunc(W6300SpiReadByte, W6300SpiWriteByte, W6100SpiReadBurst, W6100SpiWriteBurst);
-	#else
-	reg_wizchip_spi_cbfunc(W6300SpiReadByte, W6300SpiWriteByte,0,0);
-    //reg_wizchip_spi_cbfunc(wizchip_read, wizchip_write, wizchip_read_buf, wizchip_write_buf);
-	#endif
-	/* CS function register */
-	#if defined SPI_DMA
-	reg_wizchip_qspi_cbfunc(W6300SpiReadByte, W6300SpiWriteByte, W6100SpiReadBurst, W6100SpiWriteBurst);
-	#else
+	/* === 런타임 듀얼모드: 현재 strap 모드(W6300_IF_MODE)에 맞는 콜백만 등록 ===
+	   ※ reg_wizchip_*_cbfunc 는 맨 앞에서 WIZCHIP.if_mode 의 모드 비트를 기다리는 무한 가드가 있음
+	     ( while(!(WIZCHIP.if_mode & _WIZCHIP_IO_MODE_XXX_)); ).
+	   → if_mode 를 런타임 모드로 먼저 맞춘 뒤, 그 모드 콜백만 등록해야 안 멈춤. */
+	if (W6300_IF_MODE == 0x04)   /* BUS */
+	{
+		WIZCHIP.if_mode = _WIZCHIP_IO_MODE_BUS_INDIR_;
+		reg_wizchip_bus_cbfunc(W6300BusReadByte, W6300BusWriteByte);
+		reg_wizchip_busbuf_cbfunc(W6300BusReadBuf, W6300BusWriteBuf);
+	}
+	else                          /* QSPI */
+	{
+		WIZCHIP.if_mode = _WIZCHIP_IO_MODE_SPI_;
+		reg_wizchip_spi_cbfunc(W6300SpiReadByte, W6300SpiWriteByte, 0, 0);
+		reg_wizchip_qspi_cbfunc(qspi_read_buf, qspi_write_buf);
+	}
 	reg_wizchip_cs_cbfunc(W6300CsEnable, W6300CsDisable);
-	reg_wizchip_qspi_cbfunc( qspi_read_buf, qspi_write_buf );	
-	#endif 
-	//reg_wizchip_bus_cbfunc(W6300BusReadByte, W6300BusWriteByte, W6100BusReadBurst, W6100BusWriteBurst);
-#else
-
-/* Indirect bus method callback registration */
-	#if defined BUS_DMA
-	reg_wizchip_bus_cbfunc(W6300BusReadByte, W6300BusWriteByte, W6100BusReadBurst, W6100BusWriteBurst);
-	#else
-	reg_wizchip_bus_cbfunc(W6300BusReadByte, W6300BusWriteByte); //TODO: improve
-	reg_wizchip_busbuf_cbfunc(W6300BusReadBuf ,W6300BusWriteBuf );
-	printf("reg_wizchip_bus_cbfunc\r\n"); 
-	#endif
-	//Add 2024-09-09
-	/* CS function register */
-	reg_wizchip_cs_cbfunc(W6300CsEnable, W6300CsDisable);
-#endif
+	printf("reg cbfunc done (IF_MODE=0x%02x, if_mode=0x%04x)\r\n", W6300_IF_MODE, WIZCHIP.if_mode);
 	uint8_t temp;
 //	unsigned char W6300_AdrSet[2][8] = {{2, 2, 2, 2, 2, 2, 2, 2}, {2, 2, 2, 2, 2, 2, 2, 2}};
 	unsigned char W6300_AdrSet[2][8] = {{4, 4, 4, 4, 4, 4, 4, 4}, {4, 4, 4, 4, 4, 4, 4, 4}};

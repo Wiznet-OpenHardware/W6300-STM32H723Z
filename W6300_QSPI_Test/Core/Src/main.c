@@ -242,67 +242,99 @@ volatile uint8_t* pExt = (volatile uint8_t*)EXT_MEM_BASE;
 
 
 
-/* ===== BUS/QSPI 런타임 전환 + TCP 클라이언트 데모 헬퍼 ===== */
+/* ===== BUS/QSPI 런타임 전환 + TCP 에코 데모 헬퍼 ===== */
 
-/* PC0(MODE0) 드라이브 → STM32 페리페럴 전환(FMC↔OCTOSPI) → 칩 리셋/초기화/네트워크설정.
-   mode: BUS_MODE(0x04) → PC0=HIGH, FMC / QSPI_MODE_QUAD(0x02) → PC0=LOW, OCTOSPI */
-static void setup_interface_mode(uint8_t mode)
+static uint8_t g_cur_if = 0xFF;   // 현재 init된 인터페이스 (0xFF=아직 없음)
+
+/* 모드 핀(PC0/MODE0) 디바운스 — want 레벨이 IFMODE_STABLE_MS 동안 '연속' 유지될 때까지 대기.
+   손으로 점퍼 옮길 때의 바운스/떨림에 오동작하지 않도록 (중간에 흔들리면 타이머 리셋). */
+#define IFMODE_STABLE_MS  500    /* 안정 판정 시간(ms) = 0.5초 */
+static void wait_for_mode(GPIO_PinState want)
 {
-  if (mode == BUS_MODE)
+  uint32_t held = 0;
+  while (held < IFMODE_STABLE_MS)
   {
-    HAL_GPIO_WritePin(MOD0_GPIO_Port, MOD0_Pin, GPIO_PIN_SET);    // PC0=HIGH → MODE0=BUS
-    W6300_IF_MODE = BUS_MODE;
-    HAL_Delay(5);
-    chip_hw_reset();                  // 칩이 MODE0 래치(재부팅)
-    MPU_Config_FMC_Region();
-    MX_FMC_Init();                    // FMC 핀 구성
+    if (HAL_GPIO_ReadPin(MOD0_GPIO_Port, MOD0_Pin) == want) held += 20;
+    else                                                    held = 0;   // 흔들리면 리셋
+    HAL_Delay(20);
   }
-  else
-  {
-    HAL_GPIO_WritePin(MOD0_GPIO_Port, MOD0_Pin, GPIO_PIN_RESET);  // PC0=LOW → MODE0=QSPI
-    W6300_IF_MODE = QSPI_MODE_QUAD;
-    HAL_SRAM_DeInit(&hsram1);          // ★ 리셋 '전에' FMC 끄기 — 칩이 QSPI로 부팅할 때 QD핀을 FMC가 안 물게(High-Z)
-    HAL_Delay(5);
-    chip_hw_reset();                   // QD핀 High-Z 상태로 부팅(BUS와 동일 조건) → PHY 정상 기동
-    MX_OCTOSPI1_Init();               // 부팅 후 OCTOSPI 핀 + NCS 구성
-  }
-  W6300_mode = W6300_IF_MODE;
-  printf("  IF_MODE=0x%02X (PC0=%s)\r\n", W6300_IF_MODE, (mode == BUS_MODE) ? "HIGH/BUS" : "LOW/QSPI");
-
-  W6300Initialze();                   // 콜백 등록(모드별) + PHY 링크 대기 + 칩 init
-  printf("  CIDR=0x%04x VER=0x%04x\r\n", getCIDR(), getVER());
-  ctlnetwork(CN_SET_NETINFO, &gWIZNETINFO);   // IP 등 네트워크 정보 적용
-  set_loopback_mode_W6x00(AS_IPV4);   // IPv4 TCP 클라이언트용
 }
 
-/* IPv4 TCP 클라이언트: dip:dport 에 접속해서 msg 한 번 전송 후 종료 */
-static int8_t tcp_send_once(uint8_t sn, uint8_t *dip, uint16_t dport, const char *msg)
+/* mode 에 맞춰 STM32 페리페럴 전환(FMC↔OCTOSPI) + 칩 리셋/초기화/네트워크설정.
+   ※ PC0(MODE0)는 입력 — 칩 모드는 외부(점퍼)가 정함. 여기선 그 모드에 맞춰 SW/페리페럴만 맞춤.
+   ※ 이전 모드 페리페럴은 '리셋 전에' 끔 → 부팅 중 공유핀(QD)을 안 물게 해서 PHY 정상 기동.
+   mode = BUS_MODE(0x04) / QSPI_MODE_QUAD(0x02). */
+static void setup_interface_mode(uint8_t mode)
 {
-  int8_t   sret;
-  int32_t  n;
-  uint32_t guard = 0;
+  if      (g_cur_if == BUS_MODE)       HAL_SRAM_DeInit(&hsram1);   // FMC 끄기(High-Z)
+  else if (g_cur_if == QSPI_MODE_QUAD) HAL_OSPI_DeInit(&hospi1);   // OCTOSPI 끄기(High-Z)
+  g_cur_if = mode;
+
+  W6300_IF_MODE = mode;
+  W6300_mode    = mode;
+
+  HAL_Delay(5);
+  chip_hw_reset();                    // 외부 점퍼로 설정된 MODE0 를 칩이 래치(재부팅)
+
+  if (mode == BUS_MODE) { MPU_Config_FMC_Region(); MX_FMC_Init(); } // 부팅 후 FMC 구성
+  else                  { MX_OCTOSPI1_Init(); }                      // 부팅 후 OCTOSPI 구성
+
+  printf("  IF_MODE=0x%02X\r\n", W6300_IF_MODE);
+  W6300Initialze();                   // 콜백 등록(모드별) + PHY 링크 대기 + 칩 init
+  printf("  CIDR=0x%04x VER=0x%04x\r\n", getCIDR(), getVER());
+  ctlnetwork(CN_SET_NETINFO, &gWIZNETINFO);
+  set_loopback_mode_W6x00(AS_IPV4);
+}
+
+/* IPv4 TCP 에코 클라이언트: dip:dport 접속 → 문자열 올 때까지 대기 →
+   받은 문자열 앞에 prefix([QSPI]/[BUS]) 붙여 되돌려 송신. peer가 닫으면 종료. */
+static void tcp_echo_client(uint8_t sn, uint8_t *dip, uint16_t dport, const char *prefix, const char *after_msg)
+{
+  static uint8_t rxbuf[1024];
+  static uint8_t txbuf[1088];
 
   close(sn);
-  sret = socket(sn, Sn_MR_TCP4, 50000, SOCK_IO_NONBLOCK | SF_TCP_NODELAY);  // IPv4 TCP
-  if (sret != sn) { printf("  socket fail (%d)\r\n", sret); return -1; }
+  if (socket(sn, Sn_MR_TCP4, 50000, SOCK_IO_NONBLOCK | SF_TCP_NODELAY) != sn)
+  { printf("  socket fail\r\n"); return; }
 
   printf("  connect %u.%u.%u.%u:%u ...\r\n", dip[0], dip[1], dip[2], dip[3], dport);
-  connect(sn, dip, dport, 4);         // IPv4 (addrlen=4), non-block → 아래 상태 폴링
+  connect(sn, dip, dport, 4);
 
-  while (1)
+  while (1)                           // established 대기
   {
     uint8_t st = getSn_SR(sn);
     if (st == SOCK_ESTABLISHED) break;
-    if (st == SOCK_CLOSED)      { printf("  connect failed (closed)\r\n"); close(sn); return -2; }
-    if (++guard > 8000000)      { printf("  connect timeout\r\n");          close(sn); return -3; }
+    if (st == SOCK_CLOSED) { printf("  connect failed\r\n"); close(sn); return; }
   }
+  printf("  connected. 문자열 대기중...\r\n");
 
-  n = send(sn, (uint8_t *)msg, (uint16_t)strlen(msg));
-  printf("  sent %ld bytes: \"%s\"\r\n", (long)n, msg);
+  while (1)                           // 에코 루프: 문자열 오면 prefix 붙여 송신
+  {
+    uint8_t  st  = getSn_SR(sn);
+    uint16_t rsr = getSn_RX_RSR(sn);
 
-  disconnect(sn);
+    if (rsr > 0)
+    {
+      if (rsr > sizeof(rxbuf) - 1) rsr = sizeof(rxbuf) - 1;
+      int32_t n = recv(sn, rxbuf, rsr);
+      if (n > 0)
+      {
+        rxbuf[n] = 0;
+        int len = snprintf((char *)txbuf, sizeof(txbuf), "%s%.*s", prefix, (int)n, (char *)rxbuf);
+        send(sn, txbuf, (uint16_t)len);
+        printf("  recv \"%s\" -> echo \"%s\"\r\n", (char *)rxbuf, (char *)txbuf);
+        if (after_msg)                       // 에코 뒤 안내 명령 출력 (TCP로 PC에 + 시리얼)
+        {
+          send(sn, (uint8_t *)after_msg, (uint16_t)strlen(after_msg));
+          printf("  >> %s", after_msg);
+        }
+      }
+    }
+    else if (st == SOCK_CLOSE_WAIT) { disconnect(sn); break; }  // peer 닫음 + 잔여 없음
+    else if (st != SOCK_ESTABLISHED) { break; }                 // 그 외 닫힘
+  }
   close(sn);
-  return 0;
+  printf("  connection closed\r\n");
 }
 
 int main(void)
@@ -344,21 +376,28 @@ int main(void)
   printf("SYSCLK=%lu  PCLK1(USART3)=%lu\r\n",
          HAL_RCC_GetSysClockFreq(), HAL_RCC_GetPCLK1Freq());
 
-  /* ===== BUS / QSPI 순차 TCP 전송 데모 (한 번 실행) =====
-     PC0(MODE0)를 FW가 드라이브해서 모드 전환 → 각 모드에서 192.168.11.42:5000 에 접속해 메시지 전송.
-     아래 'while(1){}' 이후의 기존 W6300 init/loopback 코드는 실행되지 않음(dead code). */
+  /* ===== 신규 동작: PC0(MODE0) 입력으로 모드 감지 → QSPI 먼저, 그다음 BUS, 각 모드 TCP 에코 =====
+     PC0=LOW → QSPI, PC0=HIGH → BUS (외부 점퍼가 MODE0 설정).
+     각 모드에서 192.168.11.42:5000 접속 → 문자열 받으면 앞에 [QSPI]/[BUS] 붙여 에코.
+     아래 'while(1){}' 이후 기존 W6300/loopback 코드는 실행 안 됨(dead code). */
   {
     uint8_t dest_ip[4] = {192, 168, 11, 42};
 
-    printf("\r\n----- [1] BUS mode → TCP send -----\r\n");
-    setup_interface_mode(BUS_MODE);
-    tcp_send_once(0, dest_ip, 5000, "BUS: Hello world\r\n");
-
-    printf("\r\n----- [2] QSPI mode → TCP send -----\r\n");
+    /* [1] QSPI 모드 대기(PC0=LOW) → 에코 */
+    printf("\r\n[1] QSPI 모드 대기 (PC0=LOW)...\r\n");
+    wait_for_mode(GPIO_PIN_RESET);   // PC0=LOW 가 안정적으로 유지될 때까지 대기 (디바운스)
+    printf("  QSPI 감지\r\n");
     setup_interface_mode(QSPI_MODE_QUAD);
-    tcp_send_once(0, dest_ip, 5000, "QSPI: Hello world\r\n");
+    tcp_echo_client(0, dest_ip, 5000, "[QSPI]", "버스로 바꿔주세요\r\n");
 
-    printf("\r\n===== demo done =====\r\n");
+    /* [2] BUS 모드 대기(PC0=HIGH) → 에코 */
+    printf("\r\n[2] BUS 모드 대기 (PC0=HIGH)...\r\n");
+    wait_for_mode(GPIO_PIN_SET);     // PC0=HIGH 가 안정적으로 유지될 때까지 대기 (디바운스)
+    printf("  BUS 감지\r\n");
+    setup_interface_mode(BUS_MODE);
+    tcp_echo_client(0, dest_ip, 5000, "[BUS]", NULL);
+
+    printf("\r\n===== done =====\r\n");
     fflush(stdout);
   }
   while (1) { }
@@ -936,12 +975,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(RSTn_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : MOD0_Pin (PC0) — W6300 MODE0 제어 출력 (HIGH=BUS / LOW=QSPI) */
-  HAL_GPIO_WritePin(MOD0_GPIO_Port, MOD0_Pin, GPIO_PIN_RESET);
+  /*Configure GPIO pin : MOD0_Pin (PC0) — W6300 MODE0 입력으로 읽음 (외부 점퍼: HIGH=BUS / LOW=QSPI) */
   GPIO_InitStruct.Pin = MOD0_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(MOD0_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : SPI_EN_Pin */

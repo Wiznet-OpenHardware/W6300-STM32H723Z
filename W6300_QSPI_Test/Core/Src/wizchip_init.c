@@ -98,15 +98,25 @@ void W6300Initialze(void)
 
 	printf("PHY OK......\r\n");
 
-    do
-	{
-		if (ctlwizchip(CW_GET_PHYLINK, (void *)&temp) == -1)
-		{
-			printf("Unknown PHY link status.\r\n");
-		}
- 	} while (temp == PHY_LINK_OFF);
+    {
+      uint32_t _phy_to = 0;
+      do
+      {
+        if (ctlwizchip(CW_GET_PHYLINK, (void *)&temp) == -1)
+        {
+          printf("Unknown PHY link status.\r\n");
+        }
+        if (temp != PHY_LINK_OFF) break;     // 링크 UP
+        HAL_Delay(10);
+        if (++_phy_to >= 500)                // ~5초 후 타임아웃 (무한 대기 방지)
+        {
+          printf("PHY link TIMEOUT (link down? proceeding)\r\n");
+          break;
+        }
+      } while (1);
+    }
 
-	printf("PHY OK.\r\n");
+	printf("PHY OK. (link=%d)\r\n", temp);
 
 	temp = IK_DEST_UNREACH;
 

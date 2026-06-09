@@ -242,6 +242,69 @@ volatile uint8_t* pExt = (volatile uint8_t*)EXT_MEM_BASE;
 
 
 
+/* ===== BUS/QSPI 런타임 전환 + TCP 클라이언트 데모 헬퍼 ===== */
+
+/* PC0(MODE0) 드라이브 → STM32 페리페럴 전환(FMC↔OCTOSPI) → 칩 리셋/초기화/네트워크설정.
+   mode: BUS_MODE(0x04) → PC0=HIGH, FMC / QSPI_MODE_QUAD(0x02) → PC0=LOW, OCTOSPI */
+static void setup_interface_mode(uint8_t mode)
+{
+  if (mode == BUS_MODE)
+  {
+    HAL_GPIO_WritePin(MOD0_GPIO_Port, MOD0_Pin, GPIO_PIN_SET);    // PC0=HIGH → MODE0=BUS
+    W6300_IF_MODE = BUS_MODE;
+    HAL_Delay(5);
+    chip_hw_reset();                  // 칩이 MODE0 래치(재부팅)
+    MPU_Config_FMC_Region();
+    MX_FMC_Init();                    // FMC 핀 구성
+  }
+  else
+  {
+    HAL_GPIO_WritePin(MOD0_GPIO_Port, MOD0_Pin, GPIO_PIN_RESET);  // PC0=LOW → MODE0=QSPI
+    W6300_IF_MODE = QSPI_MODE_QUAD;
+    HAL_SRAM_DeInit(&hsram1);          // ★ 리셋 '전에' FMC 끄기 — 칩이 QSPI로 부팅할 때 QD핀을 FMC가 안 물게(High-Z)
+    HAL_Delay(5);
+    chip_hw_reset();                   // QD핀 High-Z 상태로 부팅(BUS와 동일 조건) → PHY 정상 기동
+    MX_OCTOSPI1_Init();               // 부팅 후 OCTOSPI 핀 + NCS 구성
+  }
+  W6300_mode = W6300_IF_MODE;
+  printf("  IF_MODE=0x%02X (PC0=%s)\r\n", W6300_IF_MODE, (mode == BUS_MODE) ? "HIGH/BUS" : "LOW/QSPI");
+
+  W6300Initialze();                   // 콜백 등록(모드별) + PHY 링크 대기 + 칩 init
+  printf("  CIDR=0x%04x VER=0x%04x\r\n", getCIDR(), getVER());
+  ctlnetwork(CN_SET_NETINFO, &gWIZNETINFO);   // IP 등 네트워크 정보 적용
+  set_loopback_mode_W6x00(AS_IPV4);   // IPv4 TCP 클라이언트용
+}
+
+/* IPv4 TCP 클라이언트: dip:dport 에 접속해서 msg 한 번 전송 후 종료 */
+static int8_t tcp_send_once(uint8_t sn, uint8_t *dip, uint16_t dport, const char *msg)
+{
+  int8_t   sret;
+  int32_t  n;
+  uint32_t guard = 0;
+
+  close(sn);
+  sret = socket(sn, Sn_MR_TCP4, 50000, SOCK_IO_NONBLOCK | SF_TCP_NODELAY);  // IPv4 TCP
+  if (sret != sn) { printf("  socket fail (%d)\r\n", sret); return -1; }
+
+  printf("  connect %u.%u.%u.%u:%u ...\r\n", dip[0], dip[1], dip[2], dip[3], dport);
+  connect(sn, dip, dport, 4);         // IPv4 (addrlen=4), non-block → 아래 상태 폴링
+
+  while (1)
+  {
+    uint8_t st = getSn_SR(sn);
+    if (st == SOCK_ESTABLISHED) break;
+    if (st == SOCK_CLOSED)      { printf("  connect failed (closed)\r\n"); close(sn); return -2; }
+    if (++guard > 8000000)      { printf("  connect timeout\r\n");          close(sn); return -3; }
+  }
+
+  n = send(sn, (uint8_t *)msg, (uint16_t)strlen(msg));
+  printf("  sent %ld bytes: \"%s\"\r\n", (long)n, msg);
+
+  disconnect(sn);
+  close(sn);
+  return 0;
+}
+
 int main(void)
 {
 
@@ -269,46 +332,36 @@ int main(void)
   /* Configure the peripherals common clocks */
   PeriphCommonClock_Config();
 
-  /* === 런타임 인터페이스 모드 선택 (strap 핀) ===
-     strap 읽어 W6300_IF_MODE 결정. HIGH=BUS, LOW=QSPI(Quad). 기본(풀다운)=QSPI.
-     MX_GPIO_Init / 페리페럴 init 보다 먼저 정해야 그쪽이 모드대로 갈림. */
-  IFMODE_STRAP_CLK_EN();
-  {
-    GPIO_InitTypeDef sgp = {0};
-    sgp.Pin  = IFMODE_STRAP_PIN;
-    sgp.Mode = GPIO_MODE_INPUT;
-    sgp.Pull = GPIO_PULLDOWN;
-    HAL_GPIO_Init(IFMODE_STRAP_PORT, &sgp);
-  }
-  W6300_IF_MODE = (HAL_GPIO_ReadPin(IFMODE_STRAP_PORT, IFMODE_STRAP_PIN) == GPIO_PIN_SET)
-                  ? BUS_MODE : QSPI_MODE_QUAD;
-  W6300_mode = W6300_IF_MODE;
-
-  /* Initialize all configured peripherals */
-  MX_GPIO_Init();
+  /* 공통 초기화. FMC/OCTOSPI(모드별 페리페럴)는 아래 setup_interface_mode() 에서 init. */
+  MX_GPIO_Init();           // 공통 핀 + PC0(MODE0) 출력
   MX_MDMA_Init();
-  if (W6300_IF_MODE == BUS_MODE) {
-    MPU_Config_FMC_Region();   // BUS: FMC 사용 (OCTOSPI OFF)
-    MX_FMC_Init();
-  } else {
-    MX_OCTOSPI1_Init();        // QSPI: OCTOSPI 사용 (FMC OFF)
-  }
   MX_USART2_UART_Init();
-  // /MX_SPI2_Init();
-  HAL_Delay(1000);
-
-//  MX_USART2_UART_Init();
-  MX_USART3_UART_Init();   // ← 추가
+  HAL_Delay(100);
+  MX_USART3_UART_Init();
 
   // 클럭 검증용: HSE_VALUE를 8MHz로 맞춘 뒤 아래가 480000000 / 120000000 으로 떠야 정상.
   // 깨져 나오면 HSE_VALUE(stm32h7xx_hal_conf.h) 와 실제 HSE가 안 맞는 것.
   printf("SYSCLK=%lu  PCLK1(USART3)=%lu\r\n",
          HAL_RCC_GetSysClockFreq(), HAL_RCC_GetPCLK1Freq());
 
-  /* 현재 인터페이스 모드 — strap 핀으로 결정된 런타임 값 */
-  printf("==== Interface Mode = %s  (IF_MODE=0x%02X) ====\r\n",
-         (W6300_IF_MODE == BUS_MODE) ? "BUS (8-bit FMC)" : "QSPI (Quad)",
-         W6300_IF_MODE);
+  /* ===== BUS / QSPI 순차 TCP 전송 데모 (한 번 실행) =====
+     PC0(MODE0)를 FW가 드라이브해서 모드 전환 → 각 모드에서 192.168.11.42:5000 에 접속해 메시지 전송.
+     아래 'while(1){}' 이후의 기존 W6300 init/loopback 코드는 실행되지 않음(dead code). */
+  {
+    uint8_t dest_ip[4] = {192, 168, 11, 42};
+
+    printf("\r\n----- [1] BUS mode → TCP send -----\r\n");
+    setup_interface_mode(BUS_MODE);
+    tcp_send_once(0, dest_ip, 5000, "BUS: Hello world\r\n");
+
+    printf("\r\n----- [2] QSPI mode → TCP send -----\r\n");
+    setup_interface_mode(QSPI_MODE_QUAD);
+    tcp_send_once(0, dest_ip, 5000, "QSPI: Hello world\r\n");
+
+    printf("\r\n===== demo done =====\r\n");
+    fflush(stdout);
+  }
+  while (1) { }
 
   // while (1)
   // {
@@ -883,10 +936,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(RSTn_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : MOD0_Pin */
+  /*Configure GPIO pin : MOD0_Pin (PC0) — W6300 MODE0 제어 출력 (HIGH=BUS / LOW=QSPI) */
+  HAL_GPIO_WritePin(MOD0_GPIO_Port, MOD0_Pin, GPIO_PIN_RESET);
   GPIO_InitStruct.Pin = MOD0_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(MOD0_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : SPI_EN_Pin */

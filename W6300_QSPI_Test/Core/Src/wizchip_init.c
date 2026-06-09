@@ -88,7 +88,7 @@ void W6300Initialze(void)
 	printf("reg cbfunc done (IF_MODE=0x%02x, if_mode=0x%04x)\r\n", W6300_IF_MODE, WIZCHIP.if_mode);
 	uint8_t temp;
 //	unsigned char W6300_AdrSet[2][8] = {{2, 2, 2, 2, 2, 2, 2, 2}, {2, 2, 2, 2, 2, 2, 2, 2}};
-	unsigned char W6300_AdrSet[2][8] = {{4, 4, 4, 4, 4, 4, 4, 4}, {4, 4, 4, 4, 4, 4, 4, 4}};
+	unsigned char W6300_AdrSet[2][8] = {{16, 2, 2, 2, 2, 2, 2, 2}, {16, 2, 2, 2, 2, 2, 2, 2}};
 	//unsigned char W6300_AdrSet[2][8] = {{32, 0, 0, 0, 0, 0, 0, 0}, {32, 0, 0, 0, 0, 0, 0, 0}};
 	// unsigned char W6300_AdrSet[2][8] = {{2, 0, 0, 0, 0, 0, 0, 0}, {2, 0, 0, 0, 0, 0, 0, 0}};
 	/* === QSPI 통신 점검 (임시) — PHY 링크 대기 전에 칩 ID/버전부터 읽어봄 ===

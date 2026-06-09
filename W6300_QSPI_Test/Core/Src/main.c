@@ -277,7 +277,13 @@ static void setup_interface_mode(uint8_t mode)
   chip_hw_reset();                    // 외부 점퍼로 설정된 MODE0 를 칩이 래치(재부팅)
 
   if (mode == BUS_MODE) { MPU_Config_FMC_Region(); MX_FMC_Init(); } // 부팅 후 FMC 구성
-  else                  { MX_OCTOSPI1_Init(); }                      // 부팅 후 OCTOSPI 구성
+  else                  { MX_OCTOSPI1_Init();                        // 부팅 후 OCTOSPI 구성
+    uint32_t ker = HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_OSPI);    // PLL 소스만 계산됨
+    if (ker == 0) ker = HAL_RCC_GetHCLKFreq();                        // OSPI=HCLK 소스면 HAL이 0 반환 → HCLK로 보정
+    printf("  >> OSPI_ker=%lu Hz  presc=%lu  ->  SCLK=%lu MHz\r\n",
+           (unsigned long)ker, (unsigned long)hospi1.Init.ClockPrescaler,
+           (unsigned long)(ker / hospi1.Init.ClockPrescaler / 1000000UL));
+  }
 
   printf("  IF_MODE=0x%02X\r\n", W6300_IF_MODE);
   W6300Initialze();                   // 콜백 등록(모드별) + PHY 링크 대기 + 칩 init
@@ -286,55 +292,102 @@ static void setup_interface_mode(uint8_t mode)
   set_loopback_mode_W6x00(AS_IPV4);
 }
 
-/* IPv4 TCP 에코 클라이언트: dip:dport 접속 → 문자열 올 때까지 대기 →
-   받은 문자열 앞에 prefix([QSPI]/[BUS]) 붙여 되돌려 송신. peer가 닫으면 종료. */
-static void tcp_echo_client(uint8_t sn, uint8_t *dip, uint16_t dport, const char *prefix, const char *after_msg)
+/* 약속된 패턴: byte[i] = '0' + (i % 10)  ("0123456789..." 오프셋0부터 순환) */
+
+/* established 될 때까지 대기. 성공 1 / 실패 0 */
+static int wait_established(uint8_t sn)
 {
-  static uint8_t rxbuf[1024];
-  static uint8_t txbuf[1088];
-
-  close(sn);
-  if (socket(sn, Sn_MR_TCP4, 50000, SOCK_IO_NONBLOCK | SF_TCP_NODELAY) != sn)
-  { printf("  socket fail\r\n"); return; }
-
-  printf("  connect %u.%u.%u.%u:%u ...\r\n", dip[0], dip[1], dip[2], dip[3], dport);
-  connect(sn, dip, dport, 4);
-
-  while (1)                           // established 대기
+  uint32_t g = 0;
+  while (1)
   {
     uint8_t st = getSn_SR(sn);
-    if (st == SOCK_ESTABLISHED) break;
-    if (st == SOCK_CLOSED) { printf("  connect failed\r\n"); close(sn); return; }
+    if (st == SOCK_ESTABLISHED) return 1;
+    if (st == SOCK_CLOSED || ++g > 8000000) { printf("  connect fail\r\n"); return 0; }
   }
-  printf("  connected. 문자열 대기중...\r\n");
+}
 
-  while (1)                           // 에코 루프: 문자열 오면 prefix 붙여 송신
+/* TX 측정 (장비→PC): 접속 → header 1줄 → 패턴을 duration_ms 동안 연속 송신 → close. PC가 측정. */
+static void tcp_measure_tx(uint8_t sn, uint8_t *dip, uint16_t dport, const char *header, uint32_t duration_ms)
+{
+  static uint8_t buf[8000];   // 10의 배수, send() 8192 cap 이내. (속도판 send는 SENDOK 대기 없어 큰 청크 OK)
+  uint32_t total = 0, t0, dt;
+  int32_t  n;
+  uint16_t i, bufpos = 0;
+
+  for (i = 0; i < sizeof(buf); i++) buf[i] = (uint8_t)('0' + (i % 10));
+
+  close(sn);
+  if (socket(sn, Sn_MR_TCP4, 50000, SOCK_IO_NONBLOCK | SF_TCP_NODELAY) != sn) { printf("  socket fail\r\n"); return; }
+  connect(sn, dip, dport, 4);
+  if (!wait_established(sn)) { close(sn); return; }
+
+  send(sn, (uint8_t *)header, (uint16_t)strlen(header));     // 헤더 1줄
+  printf("  %s TX %lu ms ...\r\n", header, (unsigned long)duration_ms);
+
+  t0 = HAL_GetTick();
+  while ((HAL_GetTick() - t0) < duration_ms)
+  {
+    n = send(sn, buf + bufpos, (uint16_t)(sizeof(buf) - bufpos));   // 부분송신 대비 bufpos 전진(패턴 연속)
+    if (n > 0) { total += (uint32_t)n; bufpos += (uint16_t)n; if (bufpos >= sizeof(buf)) bufpos = 0; }
+    else if (n < 0) break;              // 에러/끊김
+  }
+  dt = HAL_GetTick() - t0;
+  disconnect(sn); close(sn);
+
+  uint32_t kbps = dt ? (uint32_t)((uint64_t)total * 8 / dt) : 0;
+  printf("  TX %lu bytes / %lu ms = %lu kbps (~%lu Mbps)\r\n",
+         (unsigned long)total, (unsigned long)dt, (unsigned long)kbps, (unsigned long)(kbps / 1000));
+}
+
+/* RX 측정 (PC→장비): 접속 → header 1줄 → EOF까지 수신(바이트/패턴오류/시간 집계)
+   → "[RESULT]bytes=..,ms=..,err=..\r\n" 회신 → close. */
+static void tcp_measure_rx(uint8_t sn, uint8_t *dip, uint16_t dport, const char *header)
+{
+  static uint8_t buf[16384];   // 16KB RX 소켓버퍼에 맞춤
+  uint32_t total = 0, err = 0, t0 = 0, dt;
+  uint8_t  started = 0;
+  int32_t  n, i;
+  char     res[80];
+
+  close(sn);
+  if (socket(sn, Sn_MR_TCP4, 50000, SOCK_IO_NONBLOCK | SF_TCP_NODELAY) != sn) { printf("  socket fail\r\n"); return; }
+  connect(sn, dip, dport, 4);
+  if (!wait_established(sn)) { close(sn); return; }
+
+  send(sn, (uint8_t *)header, (uint16_t)strlen(header));     // 헤더 1줄
+  printf("  %s RX 수신중...\r\n", header);
+
+  while (1)
   {
     uint8_t  st  = getSn_SR(sn);
     uint16_t rsr = getSn_RX_RSR(sn);
-
     if (rsr > 0)
     {
-      if (rsr > sizeof(rxbuf) - 1) rsr = sizeof(rxbuf) - 1;
-      int32_t n = recv(sn, rxbuf, rsr);
+      if (!started) { t0 = HAL_GetTick(); started = 1; }     // 첫 바이트에서 타이머 시작
+      if (rsr > sizeof(buf)) rsr = sizeof(buf);
+      n = recv(sn, buf, rsr);
       if (n > 0)
       {
-        rxbuf[n] = 0;
-        int len = snprintf((char *)txbuf, sizeof(txbuf), "%s%.*s", prefix, (int)n, (char *)rxbuf);
-        send(sn, txbuf, (uint16_t)len);
-        printf("  recv \"%s\" -> echo \"%s\"\r\n", (char *)rxbuf, (char *)txbuf);
-        if (after_msg)                       // 에코 뒤 안내 명령 출력 (TCP로 PC에 + 시리얼)
-        {
-          send(sn, (uint8_t *)after_msg, (uint16_t)strlen(after_msg));
-          printf("  >> %s", after_msg);
-        }
+        for (i = 0; i < n; i++)
+          if (buf[i] != (uint8_t)('0' + ((total + (uint32_t)i) % 10))) err++;   // 누적 오프셋 기준 패턴 검사
+        total += (uint32_t)n;
       }
     }
-    else if (st == SOCK_CLOSE_WAIT) { disconnect(sn); break; }  // peer 닫음 + 잔여 없음
-    else if (st != SOCK_ESTABLISHED) { break; }                 // 그 외 닫힘
+    else if (st == SOCK_CLOSE_WAIT) break;     // PC가 shutdown(WR) → 데이터 끝(EOF)
+    else if (st != SOCK_ESTABLISHED)  break;
   }
-  close(sn);
-  printf("  connection closed\r\n");
+  dt = started ? (HAL_GetTick() - t0) : 0;
+
+  {
+    int len = snprintf(res, sizeof(res), "[RESULT]bytes=%lu,ms=%lu,err=%lu\r\n",
+                       (unsigned long)total, (unsigned long)dt, (unsigned long)err);
+    send(sn, (uint8_t *)res, (uint16_t)len);   // 결과 회신 (CLOSE_WAIT에서도 송신 가능)
+  }
+  disconnect(sn); close(sn);
+
+  uint32_t kbps = dt ? (uint32_t)((uint64_t)total * 8 / dt) : 0;
+  printf("  RX %lu bytes / %lu ms / err=%lu = %lu kbps (~%lu Mbps)\r\n",
+         (unsigned long)total, (unsigned long)dt, (unsigned long)err, (unsigned long)kbps, (unsigned long)(kbps / 1000));
 }
 
 int main(void)
@@ -376,26 +429,30 @@ int main(void)
   printf("SYSCLK=%lu  PCLK1(USART3)=%lu\r\n",
          HAL_RCC_GetSysClockFreq(), HAL_RCC_GetPCLK1Freq());
 
-  /* ===== 신규 동작: PC0(MODE0) 입력으로 모드 감지 → QSPI 먼저, 그다음 BUS, 각 모드 TCP 에코 =====
+  /* ===== iperf 단방향 대역폭 측정 (계약서 v2): PC=서버 / 장비=클라이언트 =====
      PC0=LOW → QSPI, PC0=HIGH → BUS (외부 점퍼가 MODE0 설정).
-     각 모드에서 192.168.11.42:5000 접속 → 문자열 받으면 앞에 [QSPI]/[BUS] 붙여 에코.
+     각 모드에서 PC(192.168.11.42:5000)에 접속 → 헤더 1줄([IF][TX/RX]) → TX(장비송신)·RX(장비수신) 순차 측정.
      아래 'while(1){}' 이후 기존 W6300/loopback 코드는 실행 안 됨(dead code). */
   {
     uint8_t dest_ip[4] = {192, 168, 11, 42};
+    const uint32_t TX_MS = 5000;   // TX 송신 시간(장비가 결정)
 
-    /* [1] QSPI 모드 대기(PC0=LOW) → 에코 */
+    /* [1] QSPI 모드 대기(PC0=LOW) → TX, RX 측정 */
     printf("\r\n[1] QSPI 모드 대기 (PC0=LOW)...\r\n");
-    wait_for_mode(GPIO_PIN_RESET);   // PC0=LOW 가 안정적으로 유지될 때까지 대기 (디바운스)
+    wait_for_mode(GPIO_PIN_RESET);
     printf("  QSPI 감지\r\n");
     setup_interface_mode(QSPI_MODE_QUAD);
-    tcp_echo_client(0, dest_ip, 5000, "[QSPI]", "버스로 바꿔주세요\r\n");
+    tcp_measure_tx(0, dest_ip, 5000, "[QSPI][TX]\r\n", TX_MS);
+    tcp_measure_rx(0, dest_ip, 5000, "[QSPI][RX]\r\n");
+    printf("\r\n>> 버스로 바꿔주세요 (점퍼를 BUS로)\r\n");
 
-    /* [2] BUS 모드 대기(PC0=HIGH) → 에코 */
+    /* [2] BUS 모드 대기(PC0=HIGH) → TX, RX 측정 */
     printf("\r\n[2] BUS 모드 대기 (PC0=HIGH)...\r\n");
-    wait_for_mode(GPIO_PIN_SET);     // PC0=HIGH 가 안정적으로 유지될 때까지 대기 (디바운스)
+    wait_for_mode(GPIO_PIN_SET);
     printf("  BUS 감지\r\n");
     setup_interface_mode(BUS_MODE);
-    tcp_echo_client(0, dest_ip, 5000, "[BUS]", NULL);
+    tcp_measure_tx(0, dest_ip, 5000, "[BUS][TX]\r\n", TX_MS);
+    tcp_measure_rx(0, dest_ip, 5000, "[BUS][RX]\r\n");
 
     printf("\r\n===== done =====\r\n");
     fflush(stdout);
@@ -659,7 +716,7 @@ void PeriphCommonClock_Config(void)
   PeriphClkInitStruct.PLL2.PLL2VCOSEL = RCC_PLL2VCOWIDE;
   PeriphClkInitStruct.PLL2.PLL2FRACN = 0;
   PeriphClkInitStruct.FmcClockSelection = RCC_FMCCLKSOURCE_PLL2;
-  PeriphClkInitStruct.OspiClockSelection = RCC_OSPICLKSOURCE_PLL2;
+  PeriphClkInitStruct.OspiClockSelection = RCC_OSPICLKSOURCE_HCLK;   // OSPI = HCLK(240MHz) 분리 (FMC는 PLL2R 유지)
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -692,7 +749,7 @@ static void MX_OCTOSPI1_Init(void)
   hospi1.Init.FreeRunningClock = HAL_OSPI_FREERUNCLK_DISABLE;
   hospi1.Init.ClockMode = HAL_OSPI_CLOCK_MODE_3;
   hospi1.Init.WrapSize = HAL_OSPI_WRAP_NOT_SUPPORTED;
-  hospi1.Init.ClockPrescaler = 2;
+  hospi1.Init.ClockPrescaler = 6;   // 커널 HCLK 240MHz ÷ 6 = QSPI SCLK 40MHz
 
   #if 1
   hospi1.Init.SampleShifting = HAL_OSPI_SAMPLE_SHIFTING_NONE;

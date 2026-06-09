@@ -451,7 +451,7 @@ int8_t disconnect(uint8_t sn)
 }
 
 
-#if 1
+#if 0   /* 1=안전판(455, 매 SEND마다 SENDOK 대기→직렬화, 느림) / 0=속도판(503, SENDOK 대기 없이 파이프라인) */
 int32_t send(uint8_t sn, uint8_t * buf, uint16_t len)
 {
    uint8_t tmp=0;

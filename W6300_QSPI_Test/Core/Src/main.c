@@ -435,7 +435,7 @@ int main(void)
      아래 'while(1){}' 이후 기존 W6300/loopback 코드는 실행 안 됨(dead code). */
   {
     uint8_t dest_ip[4] = {192, 168, 11, 42};
-    const uint32_t TX_MS = 5000;   // TX 송신 시간(장비가 결정)
+    const uint32_t TX_MS = 1000;   // TX 송신 시간(장비가 결정) — 1초면 판정 충분
 
     /* [1] QSPI 모드 대기(PC0=LOW) → TX, RX 측정 */
     printf("\r\n[1] QSPI 모드 대기 (PC0=LOW)...\r\n");

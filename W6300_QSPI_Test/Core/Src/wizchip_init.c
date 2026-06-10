@@ -193,12 +193,8 @@ void W6300BusWriteBuf(uint32_t AddrSel, iodata_t *buf, uint32_t len)
   W6300BusWriteByte(0x68000001 , (AddrSel>>8) & 0xff);
   W6300BusWriteByte(0x68000002 , (AddrSel>>0) & 0xff);
 
-  while(len-- )
-  {
-	  if(HAL_SRAM_Write_8b(&hsram1,(uint8_t*)0x68000003, buf, 1) != HAL_OK)
-		  printf("BusWritError \r\n");
-    buf+=1; 
-  }
+  /* 데이터포트(0x68000003)에 직접 볼라타일 write — HAL_SRAM 호출/락 오버헤드 제거 (W6300 내부 auto-increment) */
+  while(len--) *(volatile uint8_t *)0x68000003 = (uint8_t)(*buf++);
 }
 
 uint16_t W6300BusReadBuf(uint32_t AddrSel, uint8_t* buf, uint32_t len )
@@ -212,12 +208,8 @@ uint16_t W6300BusReadBuf(uint32_t AddrSel, uint8_t* buf, uint32_t len )
   W6300BusWriteByte(0x68000001 , (AddrSel>>8) & 0xff);
   W6300BusWriteByte(0x68000002 , (AddrSel>>0) & 0xff);
 
-  while(len-- )
-  {
-	  if((result = HAL_SRAM_Read_8b(&hsram1,(uint8_t*)0x68000003, buf, 1)) != HAL_OK)
-		  printf("BussReadError \r\n");
-    buf++;
-  }
+  /* 데이터포트(0x68000003)에서 직접 볼라타일 read — HAL_SRAM 호출/락 오버헤드 제거 (auto-increment) */
+  while(len--) *buf++ = *(volatile uint8_t *)0x68000003;
 	return result;
 }
 

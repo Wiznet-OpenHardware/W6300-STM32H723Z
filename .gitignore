@@ -27,3 +27,6 @@ Thumbs.db
 ./W6300_V2_serial_Test_20240911_irina/Debug/*
 
 *.zip
+/wiz_looptester/build
+/wiz_looptester/__pycache__
+wiz_looptester/dist/test_results.csv

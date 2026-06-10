@@ -1,152 +1,140 @@
-# W6300 펌웨어 → NUCLEO-H723ZG 이식 인수인계서
+# W6300 펌웨어 → NUCLEO-H723ZG 인수인계서
 
-> 작성 목적: W6300 커스텀 보드용 펌웨어(`W6300_QSPI_TEST`)를 ST 평가보드 **NUCLEO-H723ZG**에 올려서 동작/디버그 메시지를 확인하는 작업의 진행 상황과 남은 과제 정리.
+> W6300 커스텀 보드용 펌웨어(`W6300_QSPI_TEST`)를 ST 평가보드 **NUCLEO-H723ZG + WIZ630MJ(HAT)** 환경으로 이식하고,
+> **BUS / QSPI 두 인터페이스의 대역폭(throughput)을 측정**하는 작업의 현재 상태.
+> 최종 갱신: 2026-06-10
 
 ---
 
 ## 1. 한 줄 요약
 
-원래 **W6300 커스텀 보드**(STM32H723 + W6300 칩 직접 실장)용 펌웨어를, 하드웨어가 다른 **NUCLEO-H723ZG**에 이식 중. 같은 MCU(STM32H723)지만 클럭 소스·UART 경로·주변 하드웨어가 모두 달라서, 그 차이를 코드에서 맞추는 작업.
+NUCLEO-H723ZG(HSE 8MHz) + WIZ630MJ(W6300) HAT에서, **하나의 바이너리로 BUS와 QSPI를 런타임 전환**하며 TCP 단방향 대역폭을 측정한다. UART·클럭·네트워크·모드전환 다 동작하고, **현재는 속도 튜닝 단계.**
 
-**현재 상태:** MCU 부팅 OK, USART3 → ST-LINK VCP(COM) 출력까지 도달. 단, **출력 문자가 깨짐(보드율 불일치 추정)** — 이게 마지막 미해결 과제.
+**현재 측정값(2026-06-10):**
+
+| | TX (장비→PC) | RX (PC→장비) | 무결성 |
+|---|---|---|---|
+| QSPI | 67.5 Mbps | 31.6 Mbps | 패턴 OK |
+| BUS | 18.9 Mbps | 10.8 Mbps | 패턴 OK |
 
 ---
 
-## 2. 하드웨어 두 보드 차이 (핵심)
+## 2. 하드웨어
 
-| 항목 | 커스텀 보드 (원본) | NUCLEO-H723ZG (이식 대상) |
+| 항목 | 커스텀 보드(원본) | NUCLEO-H723ZG(현재) |
 |------|------|------|
 | MCU | STM32H723ZGT6 | STM32H723ZGT6 (동일) |
-| 클럭(HSE) | 외부 25MHz 오실레이터 | **ST-LINK MCO 8MHz (HSE Bypass)** |
-| 디버그 UART | USART2 → CP2104 USB-시리얼 칩 | **USART3 (PD8/PD9) → ST-LINK VCP** |
-| W6300 칩 | FMC 버스(0x68000000)로 연결, 실장됨 | **없음** |
-| 디버거 | 외부 | 온보드 STLINK-V3E |
+| HSE | 외부 **25MHz** 오실레이터 | **ST-LINK MCO 8MHz** (HSE Bypass, PH0/OSC_IN) |
+| 디버그 UART | USART2 → CP2104 | **USART3 (PD8/PD9) → ST-LINK VCP** (115200) |
+| W6300 | 보드에 직접 실장 | **WIZ630MJ 모듈을 HAT으로 연결** |
+| 디버거 | 외부 | 온보드 STLINK-V3E (V3J10M7) |
 
-> 결론: 커스텀 보드 코드를 그대로 구우면 (1) 클럭이 안 맞아 부팅 직후 멈추고, (2) UART 경로가 달라 COM에 안 뜨고, (3) W6300 초기화에서 없는 칩을 기다리다 멈춤.
-
----
-
-## 3. NUCLEO 보드 설정 (UM2407 매뉴얼 기준, 확정 사실)
-
-- **전원 점퍼 JP2 = [1-2] STLINK** (기본값). USB만 쓸 땐 무조건 이 위치.
-  - ⚠️ JP2를 VIN/5V로 두고 USB만 꽂으면 enumeration 불안정 → 굽기 실패(FAIL.TXT) 발생. 이 문제로 한참 헤맸음. **JP2는 STLINK가 정답.**
-- **JP4 (IDD measurement) = ON** (빠지면 MCU 전원 끊김)
-- **JP5 (MCU Power) = [1-2] 3V3** (기본값)
-- **USB는 CN1 (ST-LINK Micro USB)** 에 연결. CN13(User USB)은 OTG용이라 디버그와 무관.
-- **HSE 클럭:** 기본 ST-LINK MCO 8MHz, PF0/PH0(OSC_IN)로 주입. 관련 SB: SB45 ON, SB44/SB46 OFF (기본값).
-- **VCP(COM):** USART3(PD8=TX, PD9=RX)에 연결. 관련 SB12/SB19 ON (기본값).
-- **COM LED(LD4) 기본색은 빨강.** 통신 시 녹색 깜빡. 빨강 자체는 정상.
+- NUCLEO 점퍼: **JP2=[1-2] STLINK**, JP4=ON, JP5=[1-2] 3V3. USB는 CN1.
+- W6300 IP `192.168.11.99`, PC(서버) `192.168.11.42:5000`.
 
 ---
 
-## 4. ST-LINK 펌웨어 상태
+## 3. 현재 동작 (런타임 듀얼 모드)
 
-- 현재 버전: **V3J10M7** (업그레이드 완료함. M3 → M7)
-- "M7"의 M = Mass Storage 포함 → 그래서 윈도우에 **NOD_H723ZG 이동식 디스크가 뜨는 건 정상**. 무시해도 됨.
-- VCP + Mass Storage + Debug가 한 USB에 같이 뜨는 composite device 구조라 COM과 디스크가 동시에 보이는 게 맞음.
-- 업그레이드 도구: STM32CubeProgrammer → Firmware Upgrade → Open in update mode → Upgrade.
+**핵심: PC0(MOD0) 스트랩 핀을 입력으로 읽어, 외부 점퍼가 정한 모드에 맞춰 FW가 페리페럴을 구성한다.**
+
+- **PC0 = LOW → QSPI**, **PC0 = HIGH → BUS** (외부 점퍼가 W6300의 MODE0를 설정).
+- `main()` 흐름:
+  1. PC0가 LOW로 **안정(디바운스 0.5초)** → `setup_interface_mode(QSPI)` → `[QSPI][TX]` 측정 → `[QSPI][RX]` 측정
+  2. 시리얼에 `버스로 바꿔주세요` 출력 → 조작자가 점퍼를 BUS로
+  3. PC0가 HIGH로 안정 → `setup_interface_mode(BUS)` → `[BUS][TX]` → `[BUS][RX]`
+- `setup_interface_mode(mode)` ([main.c](W6300_QSPI_Test/Core/Src/main.c)):
+  - 이전 모드 페리페럴을 **먼저 끔**(`HAL_SRAM_DeInit`/`HAL_OSPI_DeInit`) → 공유핀(QD) High-Z
+  - `chip_hw_reset()` (외부 점퍼 MODE0를 칩이 래치)
+  - 모드별 `MX_FMC_Init()` 또는 `MX_OCTOSPI1_Init()`
+  - `W6300Initialze()` (모드별 콜백 등록 + PHY 링크 대기) → 네트워크 설정
 
 ---
 
-## 5. 지금까지 한 코드 수정 (main.c)
+## 4. 클럭 구성 (NUCLEO 8MHz 기준)
 
-원본은 W6300 커스텀 보드용. 아래를 수정해서 NUCLEO에서 부팅 + COM 출력까지 도달시킴.
-
-### 5-1. 클럭: 25MHz → 8MHz (HSE Bypass)
-`SystemClock_Config()`에서 `#if 1`을 **`#if 0`** 으로 바꿔, 8MHz용 블록(`#else`)이 활성화되게 함.
-
-```c
-// 활성화된 8MHz 설정 (목표 SYSCLK 480MHz)
-RCC_OscInitStruct.HSEState = RCC_HSE_BYPASS;   // MCO 주입이므로 BYPASS
-RCC_OscInitStruct.PLL.PLLM = 1;                // 8/1 = 8MHz
-RCC_OscInitStruct.PLL.PLLN = 60;               // 8*60 = 480MHz (VCO, WIDE 범위 192~836 안)
-RCC_OscInitStruct.PLL.PLLP = 1;                // 480MHz SYSCLK
-RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_3;  // 입력 8MHz → RANGE_3 (8~16MHz)
-RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1VCOWIDE;
+```
+HSE 8MHz (HSE_VALUE = 8000000 으로 맞춰야 함! ← 핵심)
+ → PLL1: M=1, N=60, P=1 → SYSCLK 480MHz, HCLK 240MHz, PCLK1 120MHz
+ → PLL2: M=5, N=120, R=10 → PLL2R = 19.2MHz  = FMC 커널 클럭(BUS)
+ → QSPI(OCTOSPI): 소스 = HCLK(240MHz), prescaler=6 → SCLK 40MHz
 ```
 
-> 참고: 원본은 25MHz 기준 550MHz였음. 8MHz로는 550이 정수로 안 떨어져 480MHz로 낮춤. 디버그 출력엔 무관.
-> ⚠️ VCO WIDE 범위는 STM32H723 데이터시트상 192~836MHz. 480은 OK. (1100MHz로 잘못 잡으면 PLL 미잠금 → 부팅 직후 사망 → 이 실수도 한 번 했음.)
-
-### 5-2. W6300/FMC 관련 비활성화 (NUCLEO엔 없는 하드웨어)
-`main()`에서 아래 주석 처리:
-```c
-//  MPU_Config_FMC_Region();
-//  MX_FMC_Init();
-```
-그리고 `while(1)` 이후의 W6300 초기화·루프백 코드 전체를 건너뛰고, 부팅 확인용 최소 루프만 남김:
-```c
-while (1)
-{
-    printf("alive %d\r\n", i++);
-    HAL_Delay(500);
-}
-```
-
-### 5-3. 디버그 출력: USART2 → USART3
-- `huart3` 핸들 추가, `MX_USART3_UART_Init()` 함수 추가(115200, 8-N-1).
-- `MX_GPIO_Init()`에 PD8/PD9를 USART3로 설정 + `__HAL_RCC_USART3_CLK_ENABLE()` 추가:
-```c
-__HAL_RCC_USART3_CLK_ENABLE();
-GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9;
-GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-GPIO_InitStruct.Alternate = GPIO_AF7_USART3;
-HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
-```
-- `main()`에서 `MX_USART3_UART_Init();` 호출.
-- printf 출력 경로 `_write()`를 `huart2` → **`huart3`** 으로 변경.
-
-> ⚠️ 정리 필요(빌드는 되지만 지저분함):
-> - 파일 상단에 `UART_HandleTypeDef huart2;`가 중복 선언됨 → 위쪽 추가분에서 한 줄 삭제 권장.
-> - `main()`에서 `MX_USART2_UART_Init();`이 두 번 호출됨 → 한 번 삭제 권장.
+- **QSPI는 PLL2R이 아니라 HCLK에 물려 있음** (`OspiClockSelection = RCC_OSPICLKSOURCE_HCLK`).
+  → PLL2R(=FMC)와 분리됨. **PLL2R을 BUS 튜닝용으로 올려도 QSPI엔 영향 없음.**
+- ⚠️ PLL2가 25MHz HSE 기준이라, 8MHz NUCLEO에선 **PLL2R = 19.2MHz로 원래(60MHz)의 1/3.**
+  → **BUS(FMC)가 느린 근본 원인.** (원래 보드였으면 BUS가 ~3배 빨랐음)
 
 ---
 
-## 6. 굽는 절차 (MCU가 멈췄을 때 복구 포함)
+## 5. 대역폭 측정 (요약, 상세는 PROTOCOL.md)
 
-부팅 직후 죽는 펌웨어를 한 번 구우면 디버거가 안 붙어서 "FAILED to reset/halt the target MCU"가 뜸. 이때 복구:
-
-1. STM32CubeProgrammer 실행
-2. 우측 ST-LINK 설정 → **Mode: `Under reset`**
-3. 보드 **RST 버튼 누른 채 → Connect → 버튼 떼기**
-4. 붙으면 **Full chip erase**
-5. (CubeIDE에서 구울 거면 Debug Config → Debugger → Connection을 Under reset으로 두면 편함)
+- PC = **TCP 서버**(`wiz_looptester.py`), 장비 = **클라이언트**. 한 세션 = **4 연결**: `[QSPI][TX]→[QSPI][RX]→[BUS][TX]→[BUS][RX]`.
+- 패턴: `byte[i] = '0' + (i%10)`. 무결성 = 수신 패턴 일치 검사(err==0).
+- **TX**(장비→PC): 장비가 N초 송신 후 close → PC가 EOF까지 바이트/시간 측정. (`tcp_measure_tx`)
+- **RX**(PC→장비): PC가 M초 송신 후 `shutdown(WR)` → 장비가 EOF에서 `[RESULT]bytes=,ms=,err=` 회신. (`tcp_measure_rx`)
+- 합격 = `Mbps ≥ Min` AND `err==0`.
 
 ---
 
-## 7. 현재 증상 & 남은 과제 (제일 중요)
+## 6. 주요 수정 파일
 
-### 증상
-- 빌드 OK, 굽기 OK, MCU 부팅 OK, USART3 → COM 출력까지 도달.
-- 터미널(115200, 8-N-1)에 **깨진 문자(`���`)만 출력됨.**
-
-### 해석
-글자가 깨져 나온다 = **하드웨어/배선/포트는 정상, 보드율(baud rate)만 불일치.**
-MCU가 실제로 내보내는 속도와 PC 터미널 속도가 다름. 즉 **실제 시스템 클럭이 의도한 480MHz가 아닐 가능성**이 큼 (USART3은 APB1 클럭 기준으로 보드율 생성).
-
-### 다음에 할 일 (우선순위 순)
-1. **터미널 보드율을 바꿔가며 정상 출력 지점 찾기:** 230400, 57600, 9600 등 시도. 정상 나오는 보드율 ÷ 115200 비율 = 실제 클럭 / 의도 클럭. 이 비율로 어디가 틀어졌는지 역산.
-2. **실제 클럭 확인:** 정상 보드율 찾은 후 `printf("SYSCLK=%lu\r\n", HAL_RCC_GetSysClockFreq());` 로 실제 값 확인.
-3. 클럭이 의도와 다르면 → PLL 계수(5-1) 재검토. 또는 가장 확실하게는 **CubeMX(.ioc)에서 NUCLEO 기준 클럭 설정을 자동 생성해 그 `SystemClock_Config` 값을 그대로 이식**하는 것 권장(손계산보다 안전).
-4. USART3 동작 자체는 확인됨(문자가 뜨므로). `HAL_UART_Transmit(&huart3, ...)` 직접 호출로도 동일하게 깨지면 클럭 문제 확정.
+| 파일 | 수정 내용 |
+|------|----------|
+| `Core/Inc/stm32h7xx_hal_conf.h`, `Core/Src/system_stm32h7xx.c` | **`HSE_VALUE` 25000000 → 8000000** (UART 깨짐 해결의 핵심) |
+| `Core/Src/main.c` | `SystemClock_Config` 8MHz용(`#if 0`); `setup_interface_mode()`(런타임 모드전환); `tcp_measure_tx/rx`(측정); PC0=입력(MOD0 스트랩); `dest_ip={192,168,11,42}`; IP=.99; QSPI 클럭 검증 printf; `PeriphCommonClock_Config`의 `OspiClockSelection=HCLK` |
+| `io6Library/Ethernet/wizchip_conf.h` | `QSPI_MODE = QSPI_MODE_QUAD`; `_WIZCHIP_IO_MODE_ = BUS_INDIR`(고정, 그래야 IO_BASE=0x68000000) |
+| `io6Library/Ethernet/W6300/w6300.c/.h` | `W6300_IF_MODE`로 **런타임 BUS/QSPI 분기**(블록 매크로·READ/WRITE) |
+| `Core/Src/wizchip_init.c` | 모드별 콜백 등록(if_mode 먼저 설정); PHY 링크 ~5초 타임아웃; **BUS 버퍼 직접 볼라타일 접근**(HAL-per-byte 제거); 소켓0 버퍼 **16KB TX/RX**(`W6300_AdrSet`) |
+| `io6Library/Ethernet/socket.c` | **`send()` `#if 1`→`#if 0`** = 속도판(503, SENDOK 대기 없는 파이프라인) 활성화 |
+| `Core/Src/stm32h7xx_hal_msp.c` | `HAL_OSPI_MspInit`에 PG6 = OCTOSPIM_P1_NCS(AF10) 추가 |
 
 ---
 
-## 8. 주의사항 / 함정 모음 (시간 날린 것들)
+## 7. 핵심 교훈 / 함정 (시간 날린 것들)
 
-- **JP2를 STLINK 아닌 곳(VIN/5V)에 두지 말 것.** USB만 쓸 땐 STLINK. (VIN/5V는 외부전원 줄 때 + 전원 시퀀스 지켜야 함)
-- **NOD_ 이동식 디스크는 정상.** ST-LINK 펌웨어 문제 아님. 무시.
-- **PLL VCO는 192~836MHz(WIDE) 안에 들 것.** 범위 넘으면 부팅 직후 사망.
-- **이 코드는 W6300 칩이 있어야 본 기능(네트워크 루프백) 동작.** NUCLEO엔 칩이 없으므로, NUCLEO에서는 "MCU 부팅 + UART 출력 확인"까지가 한계. 실제 W6300 기능 테스트는 커스텀 보드에서 해야 함.
-- **printf는 `_write()`를 통해 나감** (이 프로젝트는 `__io_putchar`가 아니라 `_write` 사용). 출력 UART 바꾸려면 `_write` 안의 핸들을 수정.
-- 필요시 `setvbuf(stdout, NULL, _IONBF, 0);`를 `HAL_Init()` 직후 추가해 printf 버퍼링 끄기.
+1. **`HSE_VALUE`는 실제 HSE와 일치해야 함.** 25MHz로 둔 채 8MHz NUCLEO에 올리면 → 클럭/UART 보드율 다 틀어져 글자 깨짐. **이게 첫 번째 큰 함정.**
+2. **PLL2는 25MHz HSE 전용 계수** → 8MHz NUCLEO에선 PLL2R=19.2MHz(1/3). FMC(BUS)·(원래)QSPI 다 느려짐. **QSPI는 HCLK로 분리해서 40MHz 확보.**
+3. **모드 전환 시 이전 페리페럴을 칩 리셋 *전에* deinit.** 안 그러면 공유핀(QD)을 FMC/OSPI가 잡고 있어 W6300 부팅 시 **PHY 링크 실패**.
+4. **`reg_wizchip_*_cbfunc`는 `WIZCHIP.if_mode` 무한 가드** 있음 → **if_mode 먼저 세팅 + 해당 모드만 등록.** 안 하면 등록에서 무한루프(멈춤).
+5. **IP 충돌 주의.** 처음 .44로 했다가 다른 기기(Apple)와 충돌 → ping/TCP 들쭉날쭉. .99로 변경.
+6. **`send()` 두 구현**: 455번(SENDOK 대기=직렬화, 느림) / 503번(파이프라인, 빠름). **`#if`로 503 선택해야 TX 빠름.** 455면 큰 청크에서 지연ACK 꼬리에 묶여 ~3Mbps로 폭락.
+7. **BUS 직접 볼라타일 접근**(`*(volatile uint8_t*)0x68000003`)이 `HAL_SRAM_*_8b` per-byte보다 ~2배 빠름.
+8. **DMA로는 BUS/QSPI 속도 못 올림** — FMC 사이클/OCTOSPI 클럭이 한계. DMA는 CPU 해방용일 뿐.
+9. **TCP 측정 갭**: 장비가 TX 끝나면 **즉시 close**(EOF), RX는 EOF에서 **즉시 [RESULT]**. 안 그러면 PC가 타임아웃(4s/2s)만큼 대기 → 측정 부정확.
 
 ---
 
-## 9. 환경 정보
+## 8. 남은 최적화 레버 / TODO
 
-- IDE: STM32CubeIDE → (이관 대상) VS Code
-- 프로젝트명: `W6300_QSPI_TEST`
-- ST-LINK FW: V3J10M7
-- 디버그 터미널 설정: **115200, 8bit, No parity, 1 stop, flow control None**
-- 라이브러리: WIZnet ioLibrary (loopback, wizchip_conf, socket 등)
+| 목표 | 방법 | 기대 |
+|------|------|------|
+| **RX ↑** (QSPI 31, BUS 10.8) | `recv()`에도 send()처럼 느린 `#if` 안전판 있는지 확인 → 속도판으로 | 둘 다 상승 (가성비 1순위) |
+| **QSPI TX 67 → 90** | 청크 8000→8192 / `tx_sink.py`로 PC툴 cap 확인 / QSPI 클럭 40→60 | PHY(100M) 근접 |
+| **BUS ↑** (~2배) | **FMC 타이밍 축소**: ADDSET 4→1, DATAST 2→1 (W6300 최소 펄스 스펙까지, 패턴 err=0 유지선 찾기) | ~35-40Mbps |
+| **BUS 더 ↑** | **PLL2R 상향**(19.2→48~64MHz). OSPI를 HCLK로 분리했으므로 QSPI 영향 없음. FMC 타이밍 ns 재계산 필요 | ~50-80Mbps |
+| **테스트 시간 ↓** | `chip_hw_reset` 500+500ms→축소, `TX_MS`(현 1000), PHY 대기 | 모드당 ~1초 절약 |
+
+> 현재 FMC 타이밍(`MX_FMC_Init`): ADDSET=4, DATAST=2 (= write ~8사이클/바이트 ≈ 416ns @19.2MHz).
+
+---
+
+## 9. 빌드 / 플래시 / 테스트
+
+1. **STM32CubeIDE에서 클린 빌드 → 플래시.** (socket.c/wizchip_init.c도 바뀌면 클린 권장)
+2. PC: `wiz_looptester.py` 실행 → Bind `192.168.11.42:5000` → START SERVER. (RX Duration 1초 권장)
+3. 장비: PC0 점퍼 **QSPI(LOW)** → 측정 → 시리얼 안내 보고 점퍼 **BUS(HIGH)** → 측정.
+4. 부팅 로그에서 `SYSCLK=480000000`, `SCLK=40 MHz`(QSPI), `CIDR=0x6100` 확인.
+
+복구(부팅 직후 죽어 디버거 안 붙을 때): CubeProgrammer → ST-LINK Mode **Under reset** → RST 누른 채 Connect → Full chip erase.
+
+---
+
+## 10. 환경 정보
+
+- IDE: STM32CubeIDE (사용자 빌드), 보조: VS Code
+- 프로젝트: `W6300_QSPI_TEST` · ST-LINK FW: V3J10M7
+- 터미널: **115200, 8-N-1, flow None**
+- 라이브러리: WIZnet ioLibrary (W6300, socket, wizchip_conf, loopback)
+- 칩 ID: `CIDR=0x6100 VER=0x4661` (W6100류 값이지만 W6300 레지스터맵 호환, 통신 정상)
+- 관련 문서: [PinMap](W6300_NUCLEO_PinMap.md) · 측정 프로토콜 [PROTOCOL.md](wiz_looptester/PROTOCOL.md) · PC 툴 요구사항 [REQUIREMENTS.md](wiz_looptester/REQUIREMENTS.md)

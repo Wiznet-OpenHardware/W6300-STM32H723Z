@@ -1,8 +1,8 @@
 # W6300 / NUCLEO-H723ZG 핀맵 (현재 펌웨어 기준)
 
 > 출처: `Core/Src/main.c`(MX_GPIO_Init), `Core/Src/stm32h7xx_hal_msp.c`(FMC/OCTOSPI MSP), `Core/Inc/main.h`(핀 정의)
-> 기준 펌웨어: USART3 디버그 + W6300 BUS(FMC), 단독 NUCLEO-H723ZG 부팅 확인본.
-> ⚠️ 현재 `MX_FMC_Init()` / `MX_OCTOSPI1_Init()`는 **호출 안 됨(비활성)**. 핀 정의는 표에 남기고 상태는 "비고"에 표기.
+> 기준 펌웨어: USART3 디버그 + **W6300 BUS/QSPI 런타임 듀얼모드** (NUCLEO-H723ZG + WIZ630MJ HAT).
+> `MX_FMC_Init()`(BUS) / `MX_OCTOSPI1_Init()`(QSPI)는 `setup_interface_mode()`에서 **PC0 스트랩이 가리키는 모드만** init.
 
 ---
 
@@ -24,21 +24,21 @@
 | PF3 | IRQ | Input | EXTI Falling | Pull-Up | — | W6300 인터럽트. **EXTI3 사용** (NVIC EXTI3_IRQn) |
 | PC4 | SPI_EN | Output | Push-Pull | NoPull | Very High | 초기 0 |
 | PF15 | Trace | Output | Push-Pull | NoPull | Very High | 초기 0 |
-| PC0 | MOD0 | Input | — | Pull-Down | — | 모드핀 (bit0, LSB) |
+| PC0 | MOD0 | Input | — | Pull-Down | — | **BUS/QSPI 스트랩**: LOW=QSPI, HIGH=BUS. 외부 점퍼가 W6300 MODE0 설정 → FW가 읽어 페리페럴 선택 |
 | PD3 | MOD1 | Input | — | Pull-Down | — | 모드핀 (bit1) |
 | PG2 | MOD2 | Input | — | Pull-Down | — | 모드핀 (bit2) |
 | PG3 | MOD3 | Input | — | Pull-Down | — | 모드핀 (bit3, MSB) |
 | PE2 | MOD4 | Output | Push-Pull | NoPull | Low | 초기 0 |
 | PE4 | MOD5 | Output | Push-Pull | NoPull | Low | 초기 0 |
 
-> MOD0~3 = 입력(풀다운)으로 하드웨어 모드 읽기, MOD4/5 = 출력. `mode` 값은 `main()`에서 MOD0~3을 비트로 조합.
+> **PC0(MOD0)가 BUS/QSPI 선택 스트랩.** FW가 0.5초 디바운스로 안정 레벨을 읽어 `setup_interface_mode()` 호출. (MOD1~3은 일반 입력으로 둠)
 
 ---
 
 ## 3. FMC 버스 — W6300 BUS 모드 (8-bit, Bank3 = 0x68000000)
 
-모두 `AF12_FMC`, AF Push-Pull, NoPull, Very High. **현재 `MX_FMC_Init()` 주석처리 → 버스 비활성.**
-단, `MX_GPIO_Init()`에서 **PF0/PF1/PD4/PD5는 AF12로 강제 설정**되어 있음(나머지 데이터/NE 핀은 FMC init 시에만 설정됨).
+모두 `AF12_FMC`, AF Push-Pull, NoPull, Very High. **BUS 모드(PC0=HIGH)일 때 `MX_FMC_Init()`로 활성화** (핀은 FMC MSP에서 설정).
+**FMC 커널 클럭 = PLL2R 19.2MHz** (NUCLEO 8MHz라 원래 보드 60MHz의 1/3 → BUS가 느린 근본 원인). 타이밍: ADDSET=4, DATAST=2.
 
 | 핀 | 신호 | 분류 | 비고 |
 |----|------|------|------|
@@ -59,9 +59,9 @@
 
 ---
 
-## 4. OCTOSPI1 — W6300 QSPI 모드 (현재 미사용)
+## 4. OCTOSPI1 — W6300 QSPI 모드 (SCLK 40MHz)
 
-`HAL_OSPI_MspInit()`에 정의되어 있으나 **`MX_OCTOSPI1_Init()` 호출 없음 → 미사용.**
+QSPI 모드(PC0=LOW)일 때 `MX_OCTOSPI1_Init()`로 활성화. **클럭 소스 = HCLK 240MHz, prescaler 6 → SCLK 40MHz** (PLL2R와 분리되어 BUS 튜닝과 무관).
 
 | 핀 | 신호 | AF | 모드 | Pull | Speed |
 |----|------|----|------|------|-------|
@@ -70,6 +70,9 @@
 | PF7 | OCTOSPIM_P1_IO2 | AF10 | AF PP | Pull-Down | Very High |
 | PF6 | OCTOSPIM_P1_IO3 | AF10 | AF PP | Pull-Down | Very High |
 | PF10 | OCTOSPIM_P1_CLK | AF9 | AF PP | NoPull | Very High |
+| PG6 | OCTOSPIM_P1_NCS | AF10 | AF PP | NoPull | Very High |
+
+> **PG6 = 칩셀렉트로, BUS의 FMC_NE3(AF12)와 같은 핀을 공유.** 모드 전환 시 AF10(QSPI)/AF12(BUS)로 바뀜 (`HAL_OSPI_MspInit`/`HAL_SRAM_MspInit`).
 
 ---
 
@@ -90,6 +93,7 @@
 - **PF4(RSTn) 초기 LOW** → 부팅 직후 W6300은 리셋 상태. 정상.
 - **EXTI3**은 PF3(IRQ)에 묶임. MOD1(PD3)·MOD3(PG3)도 핀번호 3이지만 일반 입력이라 EXTI 충돌은 없음(단, EXTI line3 소스는 PF3 하나뿐).
 - FMC 데이터버스는 **8비트(D0~D7)** 뿐. D8~D15(PD8/PD9 포함 영역)은 안 씀.
+- **PG6는 BUS(FMC_NE3)·QSPI(OCTOSPI_NCS) 공유 칩셀렉트.** QD0~3 등도 모드 간 공유됨 → 모드 전환 시 **이전 페리페럴을 칩 리셋 *전에* deinit**(`HAL_SRAM_DeInit`/`HAL_OSPI_DeInit`)해야 공유핀이 High-Z가 되어 W6300이 정상 부팅(PHY 링크 성공)함. (`setup_interface_mode`)
 
 ---
 

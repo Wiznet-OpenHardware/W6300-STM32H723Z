@@ -45,6 +45,10 @@
 #define SOCKET 0
 #define PORT_IPERF 5010
 
+/* MACRAW 테스트 스위치: 1 = 부팅 후 iperf 측정 대신 macraw_test() 실행 / 0 = 기존 iperf 측정 */
+#define MACRAW_TEST            1
+#define MACRAW_ARP_TARGET_IP   {192, 168, 11, 42}   /* ARP 요청을 보낼 상대(PC) IP */
+
 static uint8_t g_udp_buf_main[ETHERNET_BUF_MAX_SIZE * 2 ] = {
     0,
 };
@@ -390,6 +394,121 @@ static void tcp_measure_rx(uint8_t sn, uint8_t *dip, uint16_t dport, const char 
          (unsigned long)total, (unsigned long)dt, (unsigned long)err, (unsigned long)kbps, (unsigned long)(kbps / 1000));
 }
 
+/* ===== MACRAW 테스트 (MACRAW_TEST=1 일 때 main()에서 iperf 대신 실행) =====
+   소켓0을 MACRAW로 열고
+     (1) Sn_SR == SOCK_MACRAW(0x42) 인지 확인
+     (2) 1초마다 MACRAW_ARP_TARGET_IP 로 ARP 요청 프레임 송신 (브로드캐스트)
+     (3) 수신 프레임을 dst/src MAC, EtherType, 길이만 출력. ARP 응답이 오면 TX/RX 모두 통과.
+   ※ 데이터 경로는 라이브러리 sendto/recvfrom 대신 wiz_send_data/wiz_recv_data + Sn_CR 을 직접 씀.
+      (sendto_W6x00/recvfrom_W6x00 래퍼에 호출마다 디버그 printf 가 있어 출력이 섞이고,
+       고객 안내용으로 "2바이트 길이헤더 읽기 → RECV 명령" 순서를 그대로 보여주기 위함) */
+static uint16_t macraw_build_arp_req(uint8_t *f, const uint8_t *my_mac, const uint8_t *my_ip, const uint8_t *tgt_ip)
+{
+  uint16_t i = 0;
+  memset(f + i, 0xFF, 6);        i += 6;   /* dst MAC = broadcast */
+  memcpy(f + i, my_mac, 6);      i += 6;   /* src MAC */
+  f[i++] = 0x08; f[i++] = 0x06;            /* EtherType = ARP */
+  f[i++] = 0x00; f[i++] = 0x01;            /* HTYPE = Ethernet */
+  f[i++] = 0x08; f[i++] = 0x00;            /* PTYPE = IPv4 */
+  f[i++] = 6;    f[i++] = 4;               /* HLEN, PLEN */
+  f[i++] = 0x00; f[i++] = 0x01;            /* OPER = request */
+  memcpy(f + i, my_mac, 6);      i += 6;   /* SHA */
+  memcpy(f + i, my_ip, 4);       i += 4;   /* SPA */
+  memset(f + i, 0x00, 6);        i += 6;   /* THA */
+  memcpy(f + i, tgt_ip, 4);      i += 4;   /* TPA */
+  while (i < 60) f[i++] = 0;               /* 최소 프레임 길이(60, CRC 제외)까지 패딩. CRC는 칩이 붙임 */
+  return i;
+}
+
+static void macraw_test(uint8_t sn)
+{
+  static uint8_t frame[1536];
+  uint8_t  my_mac[6], my_ip[4], hdr[2], st;
+  const uint8_t tgt_ip[4] = MACRAW_ARP_TARGET_IP;
+  uint16_t rsr, flen, len, etype;
+  uint32_t rx_cnt = 0, tx_cnt = 0, last_tx = 0, t;
+
+  getSHAR(my_mac);
+  getSIPR(my_ip);
+  printf("\r\n===== MACRAW TEST (IF=%s) =====\r\n", (W6300_IF_MODE == BUS_MODE) ? "BUS" : "QSPI");
+  printf("  CIDR=0x%04x VER=0x%04x  MAC=%02x:%02x:%02x:%02x:%02x:%02x  IP=%d.%d.%d.%d\r\n",
+         getCIDR(), getVER(),
+         my_mac[0], my_mac[1], my_mac[2], my_mac[3], my_mac[4], my_mac[5],
+         my_ip[0], my_ip[1], my_ip[2], my_ip[3]);
+
+  /* (1) 소켓0 MACRAW 오픈. flag=Sn_MR_MF(=SF_ETHER_OWN): 자기/브로드캐스트/멀티캐스트 프레임만 수신.
+         모든 프레임(promiscuous)을 보려면 flag 0. */
+  close(sn);
+  if (socket(sn, Sn_MR_MACRAW, 0, Sn_MR_MF) != sn) { printf("  socket(MACRAW) FAIL\r\n"); return; }
+  st = getSn_SR(sn);
+  printf("  Sn_MR=0x%02x Sn_SR=0x%02x -> %s\r\n", getSn_MR(sn), st,
+         (st == SOCK_MACRAW) ? "SOCK_MACRAW OK" : "NOT MACRAW (FAIL)");
+  if (st != SOCK_MACRAW) return;
+
+  while (1)
+  {
+    /* (2) 1초마다 ARP 요청 송신 */
+    if (HAL_GetTick() - last_tx >= 1000)
+    {
+      last_tx = HAL_GetTick();
+      len = macraw_build_arp_req(frame, my_mac, my_ip, tgt_ip);
+      if (getSn_TX_FSR(sn) >= len)
+      {
+        wiz_send_data(sn, frame, len);
+        setSn_CR(sn, Sn_CR_SEND);
+        while (getSn_CR(sn));
+        t = HAL_GetTick();
+        while (!(getSn_IR(sn) & (Sn_IR_SENDOK | Sn_IR_TIMEOUT)))
+          if (HAL_GetTick() - t > 100) break;                     /* 100ms 안에 SENDOK 없으면 실패 */
+        if (getSn_IR(sn) & Sn_IR_SENDOK)
+        {
+          setSn_IR(sn, Sn_IR_SENDOK);
+          tx_cnt++;
+          printf("TX#%lu ARP who-has %d.%d.%d.%d (%u bytes)\r\n",
+                 (unsigned long)tx_cnt, tgt_ip[0], tgt_ip[1], tgt_ip[2], tgt_ip[3], (unsigned)len);
+        }
+        else
+        {
+          setSn_IR(sn, Sn_IR_TIMEOUT);
+          printf("TX FAIL: no SENDOK (Sn_IR=0x%02x)\r\n", getSn_IR(sn));
+        }
+      }
+    }
+
+    /* (3) 수신: [2바이트 길이(헤더 자신 포함)] + 프레임. 각 읽기 뒤 RECV 명령. */
+    rsr = getSn_RX_RSR(sn);
+    if (rsr < 2) continue;
+
+    wiz_recv_data(sn, hdr, 2);
+    setSn_CR(sn, Sn_CR_RECV);
+    while (getSn_CR(sn));
+    flen = (uint16_t)(((hdr[0] & 0x07) << 8) | hdr[1]);   /* 라이브러리와 동일하게 상위 5비트는 정보 비트로 취급 */
+    if (flen < 16 || (flen - 2) > sizeof(frame))
+    {
+      /* 길이 헤더가 깨짐 = 인터페이스 읽기 경로(주소 시퀀스/auto-increment) 의심. 테스트 중단 */
+      printf("RX FAIL: bad length header 0x%02x%02x (rsr=%u) -> check interface read path\r\n", hdr[0], hdr[1], (unsigned)rsr);
+      return;
+    }
+    flen -= 2;
+    wiz_recv_data(sn, frame, flen);
+    setSn_CR(sn, Sn_CR_RECV);
+    while (getSn_CR(sn));
+    rx_cnt++;
+
+    etype = (uint16_t)((frame[12] << 8) | frame[13]);
+    printf("RX#%lu len=%u dst=%02x:%02x:%02x:%02x:%02x:%02x src=%02x:%02x:%02x:%02x:%02x:%02x type=0x%04x",
+           (unsigned long)rx_cnt, (unsigned)flen,
+           frame[0], frame[1], frame[2], frame[3], frame[4], frame[5],
+           frame[6], frame[7], frame[8], frame[9], frame[10], frame[11], etype);
+    /* ARP 응답(OPER=2)이고 TPA가 내 IP면 우리가 보낸 요청에 대한 답 → TX/RX 왕복 확인 */
+    if (etype == 0x0806 && flen >= 42 && frame[20] == 0 && frame[21] == 2 && memcmp(frame + 38, my_ip, 4) == 0)
+      printf("  >> ARP REPLY %d.%d.%d.%d is-at %02x:%02x:%02x:%02x:%02x:%02x -> MACRAW TX/RX OK",
+             frame[28], frame[29], frame[30], frame[31],
+             frame[22], frame[23], frame[24], frame[25], frame[26], frame[27]);
+    printf("\r\n");
+  }
+}
+
 int main(void)
 {
 
@@ -428,6 +547,20 @@ int main(void)
   // 깨져 나오면 HSE_VALUE(stm32h7xx_hal_conf.h) 와 실제 HSE가 안 맞는 것.
   printf("SYSCLK=%lu  PCLK1(USART3)=%lu\r\n",
          HAL_RCC_GetSysClockFreq(), HAL_RCC_GetPCLK1Freq());
+
+#if MACRAW_TEST
+  /* ===== MACRAW 테스트: 점퍼(PC0)가 가리키는 인터페이스로 초기화 후 macraw_test() (무한 루프) =====
+     PC0=HIGH → BUS, LOW → QSPI. 아래 iperf 측정 코드는 실행되지 않음. */
+  {
+    uint8_t if_mode = (HAL_GPIO_ReadPin(MOD0_GPIO_Port, MOD0_Pin) == GPIO_PIN_SET) ? BUS_MODE : QSPI_MODE_QUAD;
+    printf("\r\nMACRAW_TEST: PC0=%s -> %s\r\n",
+           (if_mode == BUS_MODE) ? "HIGH" : "LOW", (if_mode == BUS_MODE) ? "BUS" : "QSPI");
+    setup_interface_mode(if_mode);
+    macraw_test(0);
+    printf("MACRAW test stopped.\r\n");
+    while (1) { }
+  }
+#endif
 
   /* ===== iperf 단방향 대역폭 측정 (계약서 v2): PC=서버 / 장비=클라이언트 =====
      PC0=LOW → QSPI, PC0=HIGH → BUS (외부 점퍼가 MODE0 설정).

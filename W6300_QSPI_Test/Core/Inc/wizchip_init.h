@@ -6,58 +6,19 @@ extern "C" {
 #endif
 
 #include "main.h"
-
 #include "wizchip_conf.h"
-//#include "PHY_IP101G.h"
 
-// #include "W6300_TestProcess.h"
-// #include "W6300_TestProcess.h"
+extern SRAM_HandleTypeDef hsram1;          /* FMC Bank3 (0x68000000) — main.c 에서 정의 */
 
-OSPI_HandleTypeDef hospi1;
-SRAM_HandleTypeDef hsram1;
+/* W6300 BUS(FMC, 8-bit indirect) 호스트 인터페이스 */
+void      W6300Initialze(void);            /* BUS 콜백 등록 → CIDR 확인 → PHY 링크 대기 → 버퍼/인터럽트 설정 */
+void      chip_hw_reset(void);             /* RSTn 핀으로 W6300 하드웨어 리셋 */
 
-uint8_t W6300_mode;//0; //W6100 >> 0xFF
-
-
-void W6300Initialze(void);
-
-uint8_t Get_W6300_main_IF_MODE(void);
-void FPGA_Reset(void);
-
-//data write/read function list
-void W6300BusWriteByte(uint32_t addr, iodata_t data);
-iodata_t W6300BusReadByte(uint32_t addr);
-
-void W6300SpiWriteByte(uint8_t tx);
-uint8_t W6300SpiReadByte(void);
-
-uint8_t qspi_write_buf(uint8_t op_code, uint32_t AddrSel, uint8_t *pbuf, uint16_t len);
-uint8_t qspi_read_buf(uint8_t op_code, uint32_t AddrSel, uint8_t *pbuf, uint16_t len);
-void W6300BusWriteBuf(uint32_t AddrSel, iodata_t *buf, uint32_t len);
-uint16_t W6300BusReadBuf(uint32_t AddrSel, uint8_t* buf, uint32_t len );
-
-// flow Control
-void TRACE_ON(void);
-void TRACE_OFF(void);
-void chip_sw_reset(void);
-void chip_hw_reset(void);
-void W6300CsEnable(void);
-void W6300CsDisable(void);
-
-//char qspi_set_parameter(QSPI_Set_Data *init_data);
-char send_spi_data(int len, unsigned char *data);
-char recv_spi_data(int len, unsigned char *data);
-
-uint32_t get_us_time();
-uint32_t get_time(void);
-void wiz_delay(uint32_t delay_time);
-
-void TX_ON(void);
-void TX_OFF(void);
-
-//void print_help_menu(void);
-//char Hex2Char(char const* szHex, unsigned char *rch);
-//char qspi_set_parse(char *r_data, QSPI_Set_Data *init_data);
+/* 라이브러리(w6300.c) 콜백: 바이트 접근 / 버스트(버퍼) 접근 */
+void      W6300BusWriteByte(uint32_t addr, iodata_t data);
+iodata_t  W6300BusReadByte(uint32_t addr);
+void      W6300BusWriteBuf(uint32_t AddrSel, iodata_t *buf, int16_t len);
+void      W6300BusReadBuf(uint32_t AddrSel, iodata_t *buf, int16_t len);
 
 #ifdef __cplusplus
 }
